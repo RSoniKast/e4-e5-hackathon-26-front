@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   MapPin,
   DoorClosed,
@@ -15,6 +15,7 @@ import {
   Settings,
 } from "lucide-react";
 
+import { useAuth } from "@/lib/auth-context";
 import {
   Sidebar,
   SidebarContent,
@@ -48,14 +49,23 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Sites & Bâtiments", icon: MapPin, href: "/dashboard" },
   { label: "Salles de classe", icon: DoorClosed, href: "/dashboard/salles" },
   { label: "Personnels", icon: Users, href: "/dashboard/personnels" },
-  { label: "Classes & Élèves", icon: GraduationCap },
-  { label: "Monitoring centrales", icon: Activity },
-  { label: "Visualisation salles", icon: Eye },
+  { label: "Classes & Élèves", icon: GraduationCap, href: "/dashboard/classes" },
+  { label: "Monitoring centrales", icon: Activity, href: "/dashboard/monitoring" },
+  { label: "Visualisation salles", icon: Eye, href: "/dashboard/visualisation" },
 ];
 
 export function AppSidebar() {
-  const router = useRouter();
+  const { user, logout } = useAuth();
   const pathname = usePathname();
+
+  const displayName = user ? user.username : "...";
+  const initials = user
+    ? user.username
+        .split(".")
+        .map((p) => p[0]?.toUpperCase() ?? "")
+        .join("")
+        .slice(0, 2)
+    : "??";
 
   return (
     <Sidebar>
@@ -106,12 +116,12 @@ export function AppSidebar() {
             <DropdownMenu>
               <SidebarMenuButton size="lg" render={<DropdownMenuTrigger />}>
                 <Avatar className="size-8 rounded-lg">
-                  <AvatarFallback className="rounded-lg">AD</AvatarFallback>
+                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left leading-tight">
-                  <span className="truncate font-medium">Agent · Dupont</span>
+                  <span className="truncate font-medium">{displayName}</span>
                   <span className="truncate text-xs text-muted-foreground">
-                    agent.dupont
+                    {user?.role ?? ""}
                   </span>
                 </div>
                 <ChevronsUpDown className="ml-auto" />
@@ -123,7 +133,7 @@ export function AppSidebar() {
                 sideOffset={8}
               >
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel>Agent · Dupont</DropdownMenuLabel>
+                  <DropdownMenuLabel>{displayName}</DropdownMenuLabel>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
@@ -133,7 +143,7 @@ export function AppSidebar() {
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     variant="destructive"
-                    onClick={() => router.push("/")}
+                    onClick={logout}
                   >
                     <LogOut />
                     Déconnexion

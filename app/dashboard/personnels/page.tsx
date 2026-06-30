@@ -1,12 +1,31 @@
 "use client";
 
 import * as React from "react";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import type { PersonnelRead, HoraireRead } from "@/lib/types";
+import {
+  getPersonnels,
+  getHoraires,
+  createPersonnel,
+  updatePersonnel,
+  deletePersonnel,
+  ApiError,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,14 +33,6 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -33,77 +44,130 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-const ROLES = ["Professeure", "Surveillant", "Administration"];
-
-type Horaire = { jour: string; creneau: string; salle: string };
-type Personnel = {
-  id: string;
-  nom: string;
-  prenom: string;
-  role: string;
-  email: string;
-  identifiant: string;
-  salles: { nom: string; bat: string }[];
-  horaires: Horaire[];
-  classes: string[];
+const JOUR_LABELS: Record<number, string> = {
+  1: "Lundi",
+  2: "Mardi",
+  3: "Mercredi",
+  4: "Jeudi",
+  5: "Vendredi",
+  6: "Samedi",
+  7: "Dimanche",
 };
 
-const PERSONNELS: Personnel[] = [
-  {
-    id: "lefevre",
-    nom: "Lefèvre",
-    prenom: "Marie",
-    role: "Professeure",
-    email: "m.lefevre@ecole.fr",
-    identifiant: "mlefevre",
-    salles: [
-      { nom: "A101", bat: "Bât. A" },
-      { nom: "A102", bat: "Bât. A" },
-    ],
-    horaires: [
-      { jour: "Lundi", creneau: "08:00 – 10:00", salle: "A101" },
-      { jour: "Mardi", creneau: "10:00 – 12:00", salle: "A102" },
-    ],
-    classes: ["6e A", "5e B"],
-  },
-  {
-    id: "girard",
-    nom: "Girard",
-    prenom: "Paul",
-    role: "Surveillant",
-    email: "p.girard@ecole.fr",
-    identifiant: "pgirard",
-    salles: [],
-    horaires: [{ jour: "Lundi", creneau: "08:00 – 18:00", salle: "—" }],
-    classes: [],
-  },
-  {
-    id: "bernard",
-    nom: "Bernard",
-    prenom: "Sophie",
-    role: "Professeure",
-    email: "s.bernard@ecole.fr",
-    identifiant: "sbernard",
-    salles: [{ nom: "B201", bat: "Bât. B" }],
-    horaires: [{ jour: "Jeudi", creneau: "14:00 – 16:00", salle: "B201" }],
-    classes: ["4e C"],
-  },
-  {
-    id: "haddad",
-    nom: "Haddad",
-    prenom: "Karim",
-    role: "Administration",
-    email: "k.haddad@ecole.fr",
-    identifiant: "khaddad",
-    salles: [],
-    horaires: [],
-    classes: [],
-  },
-];
-
 export default function PersonnelsPage() {
-  const [selectedId, setSelectedId] = React.useState<string>("lefevre");
-  const p = PERSONNELS.find((x) => x.id === selectedId) ?? PERSONNELS[0];
+  const [personnels, setPersonnels] = React.useState<PersonnelRead[]>([]);
+  const [horairesMap, setHorairesMap] = React.useState<Record<number, HoraireRead[]>>({});
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [selectedId, setSelectedId] = React.useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [createOpen, setCreateOpen] = React.useState(false);
+
+  const loadData = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await getPersonnels();
+      setPersonnels(data);
+
+      // Load horaires for all personnels
+      const horaires: Record<number, HoraireRead[]> = {};
+      for (const p of data) {
+        try {
+          horaires[p.id] = await getHoraires(p.id);
+        } catch {
+          horaires[p.id] = [];
+        }
+      }
+      setHorairesMap(horaires);
+
+      if (data.length > 0 && selectedId === null) {
+        setSelectedId(data[0].id);
+      }
+    } catch {
+      toast.error("Erreur lors du chargement des personnels");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const p = personnels.find((x) => x.id === selectedId) ?? personnels[0];
+  const horaires = p ? horairesMap[p.id] ?? [] : [];
+
+  // Filter
+  const filteredPersonnels = searchQuery
+    ? personnels.filter(
+        (person) =>
+          person.nom.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          person.prenom.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          person.identifiant.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : personnels;
+
+  // Handle save
+  async function handleSave(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!p) return;
+    setSaving(true);
+    const formData = new FormData(e.currentTarget);
+    try {
+      await updatePersonnel(p.id, {
+        nom: formData.get("p-nom") as string,
+        prenom: formData.get("p-prenom") as string,
+        email: (formData.get("p-email") as string) || null,
+        identifiant: formData.get("p-id") as string,
+      });
+      toast.success(`Fiche de ${formData.get("p-prenom")} ${formData.get("p-nom")} enregistrée`);
+      await loadData();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : "Erreur lors de la sauvegarde");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Handle create
+  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    try {
+      await createPersonnel({
+        identifiant: formData.get("identifiant") as string,
+        nom: formData.get("nom") as string,
+        prenom: formData.get("prenom") as string,
+        email: (formData.get("email") as string) || undefined,
+      });
+      toast.success("Personnel créé avec succès");
+      setCreateOpen(false);
+      await loadData();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : "Erreur lors de la création");
+    }
+  }
+
+  // Handle delete
+  async function handleDelete() {
+    if (!p) return;
+    try {
+      await deletePersonnel(p.id);
+      toast.success(`${p.prenom} ${p.nom} supprimé`);
+      setSelectedId(null);
+      await loadData();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : "Erreur lors de la suppression");
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col">
@@ -115,12 +179,54 @@ export default function PersonnelsPage() {
             <InputGroupAddon>
               <Search />
             </InputGroupAddon>
-            <InputGroupInput placeholder="Nom, identifiant…" />
+            <InputGroupInput
+              placeholder="Nom, identifiant…"
+              value={searchQuery}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+            />
           </InputGroup>
-          <Button>
-            <Plus data-icon="inline-start" />
-            Personnel
-          </Button>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger render={<Button />}>
+              <Plus data-icon="inline-start" />
+              Personnel
+            </DialogTrigger>
+            <DialogContent>
+              <form onSubmit={handleCreate}>
+                <DialogHeader>
+                  <DialogTitle>Nouveau personnel</DialogTitle>
+                  <DialogDescription>
+                    Renseignez les informations du nouveau membre du personnel.
+                  </DialogDescription>
+                </DialogHeader>
+                <FieldGroup className="py-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field>
+                      <FieldLabel htmlFor="create-nom">Nom</FieldLabel>
+                      <Input id="create-nom" name="nom" required />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="create-prenom">Prénom</FieldLabel>
+                      <Input id="create-prenom" name="prenom" required />
+                    </Field>
+                  </div>
+                  <Field>
+                    <FieldLabel htmlFor="create-identifiant">Identifiant</FieldLabel>
+                    <Input id="create-identifiant" name="identifiant" required />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="create-email">Email</FieldLabel>
+                    <Input id="create-email" name="email" type="email" />
+                  </Field>
+                </FieldGroup>
+                <DialogFooter>
+                  <DialogClose render={<Button variant="outline" />}>
+                    Annuler
+                  </DialogClose>
+                  <Button type="submit">Créer</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </header>
 
@@ -131,165 +237,135 @@ export default function PersonnelsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nom</TableHead>
-                <TableHead>Rôle</TableHead>
+                <TableHead>Identifiant</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {PERSONNELS.map((person) => (
-                <TableRow
-                  key={person.id}
-                  onClick={() => setSelectedId(person.id)}
-                  data-state={person.id === selectedId ? "selected" : undefined}
-                  className="cursor-pointer"
-                >
-                  <TableCell className="font-medium">
-                    {person.prenom} {person.nom}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {person.role}
+              {filteredPersonnels.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={2} className="text-center text-muted-foreground">
+                    Aucun personnel trouvé
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filteredPersonnels.map((person) => (
+                  <TableRow
+                    key={person.id}
+                    onClick={() => setSelectedId(person.id)}
+                    data-state={person.id === selectedId ? "selected" : undefined}
+                    className="cursor-pointer"
+                  >
+                    <TableCell className="font-medium">
+                      {person.prenom} {person.nom}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {person.identifiant}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </Card>
 
         {/* Fiche */}
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              Fiche —{" "}
-              <span className="text-primary">
-                {p.prenom} {p.nom}
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Tabs key={selectedId} defaultValue="info" className="gap-6">
-              <TabsList variant="line" className="w-full justify-start">
-                <TabsTrigger value="info">Informations</TabsTrigger>
-                <TabsTrigger value="salles">Salles</TabsTrigger>
-                <TabsTrigger value="horaires">Horaires</TabsTrigger>
-                <TabsTrigger value="classes">Classes</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="info">
-                <FieldGroup>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Field>
-                      <FieldLabel htmlFor="p-nom">Nom</FieldLabel>
-                      <Input id="p-nom" defaultValue={p.nom} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="p-prenom">Prénom</FieldLabel>
-                      <Input id="p-prenom" defaultValue={p.prenom} />
-                    </Field>
-                  </div>
-                  <Field>
-                    <FieldLabel htmlFor="p-email">Email</FieldLabel>
-                    <Input id="p-email" type="email" defaultValue={p.email} />
-                  </Field>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Field>
-                      <FieldLabel htmlFor="p-id">Identifiant</FieldLabel>
-                      <Input id="p-id" defaultValue={p.identifiant} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="p-role">Rôle</FieldLabel>
-                      <Select defaultValue={p.role}>
-                        <SelectTrigger id="p-role" className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {ROLES.map((r) => (
-                              <SelectItem key={r} value={r}>
-                                {r}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  </div>
-                </FieldGroup>
-              </TabsContent>
-
-              <TabsContent value="salles">
-                {p.salles.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Aucune salle rattachée.
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {p.salles.map((s) => (
-                      <Badge key={s.nom} variant="secondary">
-                        {s.nom} · {s.bat}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="horaires">
-                {p.horaires.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Aucun horaire défini.
-                  </p>
-                ) : (
-                  <div className="overflow-hidden rounded-lg border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Jour</TableHead>
-                          <TableHead>Créneau</TableHead>
-                          <TableHead>Salle</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {p.horaires.map((h, i) => (
-                          <TableRow key={i}>
-                            <TableCell className="font-medium">
-                              {h.jour}
-                            </TableCell>
-                            <TableCell>{h.creneau}</TableCell>
-                            <TableCell>{h.salle}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="classes">
-                {p.classes.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Aucune classe rattachée.
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {p.classes.map((c) => (
-                      <Badge key={c} variant="secondary">
-                        {c}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-
-            <div className="mt-6 flex justify-end">
-              <Button
-                onClick={() =>
-                  toast.success(`Fiche de ${p.prenom} ${p.nom} enregistrée`)
-                }
-              >
-                Enregistrer
+        {p ? (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>
+                Fiche —{" "}
+                <span className="text-primary">
+                  {p.prenom} {p.nom}
+                </span>
+              </CardTitle>
+              <Button variant="destructive" size="sm" onClick={handleDelete}>
+                <Trash2 className="size-4" data-icon="inline-start" />
+                Supprimer
               </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent>
+              <Tabs key={selectedId} defaultValue="info" className="gap-6">
+                <TabsList variant="line" className="w-full justify-start">
+                  <TabsTrigger value="info">Informations</TabsTrigger>
+                  <TabsTrigger value="horaires">Horaires</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="info">
+                  <form onSubmit={handleSave}>
+                    <FieldGroup>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <Field>
+                          <FieldLabel htmlFor="p-nom">Nom</FieldLabel>
+                          <Input id="p-nom" name="p-nom" defaultValue={p.nom} />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="p-prenom">Prénom</FieldLabel>
+                          <Input id="p-prenom" name="p-prenom" defaultValue={p.prenom} />
+                        </Field>
+                      </div>
+                      <Field>
+                        <FieldLabel htmlFor="p-email">Email</FieldLabel>
+                        <Input
+                          id="p-email"
+                          name="p-email"
+                          type="email"
+                          defaultValue={p.email ?? ""}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="p-id">Identifiant</FieldLabel>
+                        <Input id="p-id" name="p-id" defaultValue={p.identifiant} />
+                      </Field>
+                    </FieldGroup>
+                    <div className="mt-6 flex justify-end">
+                      <Button type="submit" disabled={saving}>
+                        {saving && (
+                          <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
+                        )}
+                        Enregistrer
+                      </Button>
+                    </div>
+                  </form>
+                </TabsContent>
+
+                <TabsContent value="horaires">
+                  {horaires.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Aucun horaire défini.
+                    </p>
+                  ) : (
+                    <div className="overflow-hidden rounded-lg border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Jour</TableHead>
+                            <TableHead>Début</TableHead>
+                            <TableHead>Fin</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {horaires.map((h) => (
+                            <TableRow key={h.id}>
+                              <TableCell className="font-medium">
+                                {JOUR_LABELS[h.jour] ?? `Jour ${h.jour}`}
+                              </TableCell>
+                              <TableCell>{h.heure_debut}</TableCell>
+                              <TableCell>{h.heure_fin}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="flex items-center justify-center">
+            <p className="text-muted-foreground">Sélectionnez un personnel</p>
+          </Card>
+        )}
       </div>
     </div>
   );

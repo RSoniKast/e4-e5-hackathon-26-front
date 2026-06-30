@@ -1,9 +1,13 @@
 "use client";
 
+import * as React from "react";
 import { useRouter } from "next/navigation";
-import { School, Database } from "lucide-react";
+import Link from "next/link";
+import { School, Database, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { useAuth } from "@/lib/auth-context";
+import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,10 +32,43 @@ import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login, user, loading: authLoading } = useAuth();
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  // If already authenticated, redirect to dashboard
+  React.useEffect(() => {
+    if (!authLoading && user) {
+      router.push("/dashboard");
+    }
+  }, [authLoading, user, router]);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    router.push("/dashboard");
+    setError(null);
+    setLoading(true);
+
+    const formData = new FormData(event.currentTarget);
+    const username = formData.get("identifiant") as string;
+    const password = formData.get("password") as string;
+
+    try {
+      await login(username, password);
+      toast.success("Connexion réussie");
+      router.push("/dashboard");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          setError("Identifiant ou mot de passe incorrect.");
+        } else {
+          setError(err.detail);
+        }
+      } else {
+        setError("Erreur de connexion au serveur. Vérifiez que le backend est lancé.");
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -57,6 +94,11 @@ export default function LoginPage() {
           <CardContent>
             <form onSubmit={handleSubmit}>
               <FieldGroup>
+                {error && (
+                  <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
                 <Field>
                   <FieldLabel htmlFor="identifiant">Identifiant</FieldLabel>
                   <Input
@@ -65,6 +107,7 @@ export default function LoginPage() {
                     placeholder="agent.dupont"
                     autoComplete="username"
                     required
+                    disabled={loading}
                   />
                 </Field>
                 <Field>
@@ -76,6 +119,7 @@ export default function LoginPage() {
                     placeholder="••••••••"
                     autoComplete="current-password"
                     required
+                    disabled={loading}
                   />
                 </Field>
                 <Field orientation="horizontal">
@@ -84,13 +128,21 @@ export default function LoginPage() {
                     Se souvenir de moi
                   </FieldLabel>
                 </Field>
-                <Button type="submit" className="w-full">
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading && <Loader2 className="size-4 animate-spin" data-icon="inline-start" />}
                   Se connecter
                 </Button>
               </FieldGroup>
             </form>
           </CardContent>
         </Card>
+
+        <p className="text-sm text-muted-foreground">
+          Pas encore de compte ?{" "}
+          <Link href="/register" className="text-primary underline-offset-4 hover:underline">
+            Créer un compte
+          </Link>
+        </p>
 
         <Dialog>
           <DialogTrigger
