@@ -1,0 +1,145 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  MapPin,
+  DoorClosed,
+  Users,
+  GraduationCap,
+  Activity,
+  Eye,
+  School,
+  ChevronsUpDown,
+  LogOut,
+  Settings,
+} from "lucide-react";
+
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+type NavItem = {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  href?: string;
+};
+
+const NAV_ITEMS: NavItem[] = [
+  { label: "Sites & Bâtiments", icon: MapPin, href: "/dashboard" },
+  { label: "Salles de classe", icon: DoorClosed, href: "/dashboard/salles" },
+  { label: "Personnels", icon: Users, href: "/dashboard/personnels" },
+  { label: "Classes & Élèves", icon: GraduationCap },
+  { label: "Monitoring centrales", icon: Activity },
+  { label: "Visualisation salles", icon: Eye },
+];
+
+export function AppSidebar() {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  return (
+    <Sidebar>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" render={<Link href="/dashboard" />}>
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <School className="size-5" />
+              </div>
+              <span className="font-heading text-base font-semibold">
+                ClassroomObserv
+              </span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {NAV_ITEMS.map((item) => (
+                <SidebarMenuItem key={item.label}>
+                  <SidebarMenuButton
+                    isActive={!!item.href && pathname === item.href}
+                    tooltip={item.label}
+                    render={item.href ? <Link href={item.href} /> : undefined}
+                  >
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <SidebarMenuButton size="lg">
+                    <Avatar className="size-8 rounded-lg">
+                      <AvatarFallback className="rounded-lg">AD</AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left leading-tight">
+                      <span className="truncate font-medium">Agent · Dupont</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        agent.dupont
+                      </span>
+                    </div>
+                    <ChevronsUpDown className="ml-auto" />
+                  </SidebarMenuButton>
+                }
+              />
+              <DropdownMenuContent
+                className="w-(--anchor-width) min-w-56"
+                side="top"
+                align="start"
+                sideOffset={8}
+              >
+                <DropdownMenuLabel>Agent · Dupont</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuItem>
+                    <Settings />
+                    Paramètres
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => router.push("/")}
+                  >
+                    <LogOut />
+                    Déconnexion
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
+  );
+}
