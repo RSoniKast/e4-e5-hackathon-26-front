@@ -27,6 +27,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ModeToggle } from "@/components/mode-toggle";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,8 +61,12 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/dashboard" />}>
+          <SidebarMenuItem className="flex items-center gap-2">
+            <SidebarMenuButton
+              size="lg"
+              className="flex-1"
+              render={<Link href="/dashboard" />}
+            >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <School className="size-5" />
               </div>
@@ -69,6 +74,7 @@ export function AppSidebar() {
                 ClassroomObserv
               </span>
             </SidebarMenuButton>
+            <ModeToggle />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -98,29 +104,27 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuButton size="lg">
-                    <Avatar className="size-8 rounded-lg">
-                      <AvatarFallback className="rounded-lg">AD</AvatarFallback>
-                    </Avatar>
-                    <div className="grid flex-1 text-left leading-tight">
-                      <span className="truncate font-medium">Agent · Dupont</span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        agent.dupont
-                      </span>
-                    </div>
-                    <ChevronsUpDown className="ml-auto" />
-                  </SidebarMenuButton>
-                }
-              />
+              <SidebarMenuButton size="lg" render={<DropdownMenuTrigger />}>
+                <Avatar className="size-8 rounded-lg">
+                  <AvatarFallback className="rounded-lg">AD</AvatarFallback>
+                </Avatar>
+                <div className="grid flex-1 text-left leading-tight">
+                  <span className="truncate font-medium">Agent · Dupont</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    agent.dupont
+                  </span>
+                </div>
+                <ChevronsUpDown className="ml-auto" />
+              </SidebarMenuButton>
               <DropdownMenuContent
                 className="w-(--anchor-width) min-w-56"
                 side="top"
                 align="start"
                 sideOffset={8}
               >
-                <DropdownMenuLabel>Agent · Dupont</DropdownMenuLabel>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Agent · Dupont</DropdownMenuLabel>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuItem>

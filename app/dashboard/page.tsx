@@ -253,7 +253,7 @@ export default function SitesBatimentsPage() {
           <CardHeader>
             <CardTitle className="text-primary">Détail du site</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-6">
+          <CardContent key={site.id} className="flex flex-col gap-6">
             <FieldGroup>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
