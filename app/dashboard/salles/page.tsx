@@ -140,6 +140,7 @@ export default function SallesPage() {
         nom: formData.get("salle-nom") as string,
         capacite: formData.get("salle-cap") ? parseInt(formData.get("salle-cap") as string) : null,
         batiment_id: formData.get("salle-bat") ? parseInt(formData.get("salle-bat") as string) : undefined,
+        heure_fermeture: (formData.get("salle-heure") as string) || null,
       });
 
       // Update calculateur links: assign salle_id to checked calculateurs, remove from unchecked
@@ -174,6 +175,7 @@ export default function SallesPage() {
         nom: formData.get("nom") as string,
         batiment_id: parseInt(formData.get("batiment_id") as string),
         capacite: formData.get("capacite") ? parseInt(formData.get("capacite") as string) : undefined,
+        heure_fermeture: (formData.get("heure_fermeture") as string) || undefined,
       });
       toast.success("Salle créée avec succès");
       setCreateOpen(false);
@@ -222,7 +224,13 @@ export default function SallesPage() {
           </InputGroup>
           <Select value={filterSiteId} onValueChange={(v) => { setFilterSiteId(v ?? ""); setFilterBatimentId(""); }}>
             <SelectTrigger className="w-28" aria-label="Filtrer par site">
-              <SelectValue placeholder="Site" />
+              <SelectValue placeholder="Site">
+                {(value: string | null) => {
+                  if (!value) return "Site";
+                  const s = sites.find((x) => String(x.id) === value);
+                  return s ? s.nom : value;
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
@@ -236,7 +244,13 @@ export default function SallesPage() {
           </Select>
           <Select value={filterBatimentId} onValueChange={(v) => setFilterBatimentId(v ?? "")}>
             <SelectTrigger className="w-32" aria-label="Filtrer par bâtiment">
-              <SelectValue placeholder="Bâtiment" />
+              <SelectValue placeholder="Bâtiment">
+                {(value: string | null) => {
+                  if (!value) return "Bâtiment";
+                  const b = filteredBatimentsForFilter.find((x) => String(x.id) === value);
+                  return b ? b.nom : value;
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
@@ -271,7 +285,13 @@ export default function SallesPage() {
                     <FieldLabel htmlFor="create-salle-bat">Bâtiment</FieldLabel>
                     <Select name="batiment_id" required>
                       <SelectTrigger id="create-salle-bat" className="w-full">
-                        <SelectValue placeholder="Choisir un bâtiment" />
+                        <SelectValue placeholder="Choisir un bâtiment">
+                          {(value: string | null) => {
+                            if (!value) return "Choisir un bâtiment";
+                            const b = batiments.find((x) => String(x.id) === value);
+                            return b ? `${b.nom} — ${getSiteName(b.id)}` : value;
+                          }}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
@@ -284,10 +304,16 @@ export default function SallesPage() {
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field>
-                    <FieldLabel htmlFor="create-salle-cap">Capacité</FieldLabel>
-                    <Input id="create-salle-cap" name="capacite" type="number" />
-                  </Field>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field>
+                      <FieldLabel htmlFor="create-salle-cap">Capacité</FieldLabel>
+                      <Input id="create-salle-cap" name="capacite" type="number" />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="create-salle-heure">Heure de fermeture</FieldLabel>
+                      <Input id="create-salle-heure" name="heure_fermeture" type="time" />
+                    </Field>
+                  </div>
                 </FieldGroup>
                 <DialogFooter>
                   <DialogClose render={<Button variant="outline" />}>
@@ -375,6 +401,15 @@ export default function SallesPage() {
                       />
                     </Field>
                   </div>
+                  <Field>
+                    <FieldLabel htmlFor="salle-heure">Heure de fermeture</FieldLabel>
+                    <Input
+                      id="salle-heure"
+                      name="salle-heure"
+                      type="time"
+                      defaultValue={selected.heure_fermeture ?? ""}
+                    />
+                  </Field>
                   <Field>
                     <FieldLabel htmlFor="salle-bat">Bâtiment</FieldLabel>
                     <select

@@ -61,10 +61,10 @@ export function AppSidebar() {
   const displayName = user ? user.username : "...";
   const initials = user
     ? user.username
-        .split(".")
-        .map((p) => p[0]?.toUpperCase() ?? "")
-        .join("")
-        .slice(0, 2)
+      .split(".")
+      .map((p) => p[0]?.toUpperCase() ?? "")
+      .join("")
+      .slice(0, 2)
     : "??";
 
   return (
@@ -77,7 +77,7 @@ export function AppSidebar() {
               className="flex-1"
               render={<Link href="/dashboard" />}
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary/10">
                 <School className="size-5" />
               </div>
               <span className="font-heading text-base font-semibold">
