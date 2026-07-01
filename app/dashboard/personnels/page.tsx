@@ -8,13 +8,15 @@ import type { PersonnelRead, HoraireRead } from "@/lib/types";
 import {
   getPersonnels,
   getHoraires,
+  createHoraire,
   createPersonnel,
   updatePersonnel,
   deletePersonnel,
   ApiError,
 } from "@/lib/api";
+import { Planning } from "@/components/planning/planning";
+import { horairesToEvents, type HoraireDraft } from "@/lib/planning";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -43,16 +45,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-const JOUR_LABELS: Record<number, string> = {
-  1: "Lundi",
-  2: "Mardi",
-  3: "Mercredi",
-  4: "Jeudi",
-  5: "Vendredi",
-  6: "Samedi",
-  7: "Dimanche",
-};
 
 export default function PersonnelsPage() {
   const [personnels, setPersonnels] = React.useState<PersonnelRead[]>([]);
@@ -96,6 +88,15 @@ export default function PersonnelsPage() {
 
   const p = personnels.find((x) => x.id === selectedId) ?? personnels[0];
   const horaires = p ? horairesMap[p.id] ?? [] : [];
+  const planningEvents = React.useMemo(
+    () =>
+      horairesToEvents(horaires, {
+        title: "Présence",
+        colorIndex: 0,
+        keyPrefix: p ? `p${p.id}` : "p",
+      }),
+    [horaires, p]
+  );
 
   // Filter
   const filteredPersonnels = searchQuery
@@ -158,6 +159,21 @@ export default function PersonnelsPage() {
       await loadData();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.detail : "Erreur lors de la suppression");
+    }
+  }
+
+  // Ajout d'un créneau depuis le planning → POST /api/personnels/{pid}/horaires
+  async function handleCreateHoraire(draft: HoraireDraft) {
+    if (!p) return;
+    try {
+      await createHoraire(p.id, draft);
+      const fresh = await getHoraires(p.id);
+      setHorairesMap((prev) => ({ ...prev, [p.id]: fresh }));
+      toast.success("Créneau ajouté");
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.detail : "Erreur lors de l'ajout du créneau"
+      );
     }
   }
 
@@ -287,7 +303,7 @@ export default function PersonnelsPage() {
               <Tabs key={selectedId} defaultValue="info" className="gap-6">
                 <TabsList variant="line" className="w-full justify-start">
                   <TabsTrigger value="info">Informations</TabsTrigger>
-                  <TabsTrigger value="horaires">Horaires</TabsTrigger>
+                  <TabsTrigger value="planning">Planning</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="info">
@@ -328,35 +344,12 @@ export default function PersonnelsPage() {
                   </form>
                 </TabsContent>
 
-                <TabsContent value="horaires">
-                  {horaires.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Aucun horaire défini.
-                    </p>
-                  ) : (
-                    <div className="overflow-hidden rounded-lg border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Jour</TableHead>
-                            <TableHead>Début</TableHead>
-                            <TableHead>Fin</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {horaires.map((h) => (
-                            <TableRow key={h.id}>
-                              <TableCell className="font-medium">
-                                {JOUR_LABELS[h.jour] ?? `Jour ${h.jour}`}
-                              </TableCell>
-                              <TableCell>{h.heure_debut}</TableCell>
-                              <TableCell>{h.heure_fin}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
+                <TabsContent value="planning">
+                  <Planning
+                    events={planningEvents}
+                    onCreateHoraire={handleCreateHoraire}
+                    emptyLabel="Aucun horaire défini pour ce personnel."
+                  />
                 </TabsContent>
               </Tabs>
             </CardContent>

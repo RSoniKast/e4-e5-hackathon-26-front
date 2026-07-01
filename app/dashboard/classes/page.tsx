@@ -31,10 +31,13 @@ import {
   retirerPersonnelClasse,
   getEleves,
   getPersonnels,
+  getHoraires,
   importEleves,
   createEleve,
   ApiError,
 } from "@/lib/api";
+import { Planning } from "@/components/planning/planning";
+import { horairesToEvents, type PlanningEvent } from "@/lib/planning";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +68,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -162,6 +166,37 @@ export default function ClassesElevesPage() {
     classes.find((c) => c.id === selectedId) ?? classes[0] ?? null;
   const classeEleves = selected ? elevesMap[selected.id] ?? [] : [];
   const classeProfs = selected ? personnelsMap[selected.id] ?? [] : [];
+
+  // Planning de la classe : horaires de chaque professeur affecté.
+  const [planningEvents, setPlanningEvents] = React.useState<PlanningEvent[]>(
+    []
+  );
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!selected) {
+        setPlanningEvents([]);
+        return;
+      }
+      const profs = personnelsMap[selected.id] ?? [];
+      const lists = await Promise.all(
+        profs.map((cp) => getHoraires(cp.personnel_id).catch(() => []))
+      );
+      if (cancelled) return;
+      const evts = profs.flatMap((cp, i) =>
+        horairesToEvents(lists[i], {
+          title: cp.matiere || "Cours",
+          subtitle: `${cp.prenom} ${cp.nom}`,
+          colorIndex: i,
+          keyPrefix: `c${selected.id}-p${cp.personnel_id}`,
+        })
+      );
+      setPlanningEvents(evts);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, personnelsMap]);
 
   // Filter classes
   const filteredClasses = searchQuery
@@ -538,340 +573,367 @@ export default function ClassesElevesPage() {
                 Supprimer
               </Button>
             </CardHeader>
-            <CardContent className="flex flex-col gap-6">
-              {/* ─── Info form ────────────────────────────────────── */}
-              <form
+            <CardContent>
+              <Tabs
                 key={selected.id}
-                onSubmit={handleSave}
-                className="flex flex-col gap-4"
+                defaultValue="classe"
+                className="gap-6"
               >
-                <FieldGroup>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <Field>
-                      <FieldLabel htmlFor="c-nom">Nom</FieldLabel>
-                      <Input
-                        id="c-nom"
-                        name="c-nom"
-                        defaultValue={selected.nom}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="c-niveau">Niveau</FieldLabel>
-                      <Input
-                        id="c-niveau"
-                        name="c-niveau"
-                        defaultValue={selected.niveau ?? ""}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="c-annee">
-                        Annee scolaire
-                      </FieldLabel>
-                      <Input
-                        id="c-annee"
-                        name="c-annee"
-                        defaultValue={selected.annee_scolaire}
-                      />
-                    </Field>
+                <TabsList variant="line" className="w-full justify-start">
+                  <TabsTrigger value="classe">Classe</TabsTrigger>
+                  <TabsTrigger value="planning">Planning</TabsTrigger>
+                  <TabsTrigger value="eleves">Élèves</TabsTrigger>
+                </TabsList>
+
+                {/* ─── Onglet Classe : paramètres ─────────────────── */}
+                <TabsContent value="classe">
+                  <form onSubmit={handleSave} className="flex flex-col gap-4">
+                    <FieldGroup>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <Field>
+                          <FieldLabel htmlFor="c-nom">Nom</FieldLabel>
+                          <Input
+                            id="c-nom"
+                            name="c-nom"
+                            defaultValue={selected.nom}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="c-niveau">Niveau</FieldLabel>
+                          <Input
+                            id="c-niveau"
+                            name="c-niveau"
+                            defaultValue={selected.niveau ?? ""}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="c-annee">
+                            Annee scolaire
+                          </FieldLabel>
+                          <Input
+                            id="c-annee"
+                            name="c-annee"
+                            defaultValue={selected.annee_scolaire}
+                          />
+                        </Field>
+                      </div>
+                    </FieldGroup>
+                    <div className="flex justify-end">
+                      <Button type="submit" disabled={saving}>
+                        {saving && (
+                          <Loader2
+                            className="size-4 animate-spin"
+                            data-icon="inline-start"
+                          />
+                        )}
+                        Enregistrer
+                      </Button>
+                    </div>
+                  </form>
+                </TabsContent>
+
+                {/* ─── Onglet Planning : professeurs + planning ───── */}
+                <TabsContent
+                  value="planning"
+                  className="flex flex-col gap-6"
+                >
+                  {/* ─── Professeurs section ──────────────────────── */}
+                  <div className="flex flex-col gap-3">
+                    <h3 className="font-heading text-sm font-medium text-primary">
+                      Professeurs
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {classeProfs.map((cp) => (
+                        <Badge
+                          key={`${cp.personnel_id}-${cp.matiere}`}
+                          variant="secondary"
+                          className="gap-3 py-3 pl-3 pr-2 text-sm"
+                        >
+                          {cp.nom} {cp.prenom}
+                          {cp.matiere ? ` - ${cp.matiere}` : ""}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveProf(cp.personnel_id)}
+                            className="ml-1 rounded-full p-1 hover:bg-primary/20"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </Badge>
+                      ))}
+
+                      <Dialog open={addProfOpen} onOpenChange={setAddProfOpen}>
+                        <DialogTrigger
+                          render={
+                            <Button variant="outline" size="sm" className="h-7 gap-1 rounded-full px-3 text-xs" />
+                          }
+                        >
+                          <Plus className="size-3" />
+                          Ajouter un professeur
+                        </DialogTrigger>
+                        <DialogContent>
+                          <form onSubmit={handleAddProf}>
+                            <DialogHeader>
+                              <DialogTitle>Affecter un professeur</DialogTitle>
+                              <DialogDescription>
+                                Choisissez un professeur et sa matiere pour cette
+                                classe.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <FieldGroup className="py-4">
+                              <Field>
+                                <FieldLabel htmlFor="add-prof-id">
+                                  Professeur
+                                </FieldLabel>
+                                <Select name="personnel_id" required>
+                                  <SelectTrigger
+                                    id="add-prof-id"
+                                    className="w-full"
+                                  >
+                                    <SelectValue placeholder="Choisir un professeur">
+                                      {(value: string | null) => {
+                                        if (!value) return "Choisir un professeur";
+                                        const p = allPersonnels.find((x) => String(x.id) === value);
+                                        return p ? `${p.prenom} ${p.nom}` : value;
+                                      }}
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      {allPersonnels.map((p) => (
+                                        <SelectItem
+                                          key={p.id}
+                                          value={String(p.id)}
+                                        >
+                                          {p.prenom} {p.nom}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                              <Field>
+                                <FieldLabel htmlFor="add-prof-matiere">
+                                  Matiere
+                                </FieldLabel>
+                                <Input
+                                  id="add-prof-matiere"
+                                  name="matiere"
+                                  placeholder="Ex: Mathematiques"
+                                />
+                              </Field>
+                            </FieldGroup>
+                            <DialogFooter>
+                              <DialogClose
+                                render={<Button variant="outline" />}
+                              >
+                                Annuler
+                              </DialogClose>
+                              <Button type="submit">Affecter</Button>
+                            </DialogFooter>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
                   </div>
-                </FieldGroup>
-                <div className="flex justify-end">
-                  <Button type="submit" disabled={saving}>
-                    {saving && (
-                      <Loader2
-                        className="size-4 animate-spin"
-                        data-icon="inline-start"
-                      />
+
+                  <Separator />
+
+                  {/* ─── Planning section ─────────────────────────── */}
+                  <div className="flex flex-col gap-3">
+                    <h3 className="font-heading text-sm font-medium text-primary">
+                      Planning de la classe
+                    </h3>
+                    <Planning
+                      events={planningEvents}
+                      emptyLabel="Aucun horaire de cours. Affectez des professeurs disposant d'horaires."
+                    />
+                  </div>
+                </TabsContent>
+
+                {/* ─── Onglet Élèves : liste + import ─────────────── */}
+                <TabsContent value="eleves">
+                  <div className="flex flex-col gap-3">
+                    <h3 className="font-heading text-sm font-medium text-primary">
+                      Eleves ({classeEleves.length})
+                    </h3>
+
+                    {classeEleves.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Aucun eleve affecte a cette classe.
+                      </p>
+                    ) : (
+                      <div className="overflow-hidden rounded-lg border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Nom</TableHead>
+                              <TableHead>Identifiant</TableHead>
+                              <TableHead>Email</TableHead>
+                              <TableHead className="w-16"></TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {classeEleves.map((eleve) => (
+                              <TableRow key={eleve.id}>
+                                <TableCell className="font-medium">
+                                  {eleve.prenom} {eleve.nom}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {eleve.identifiant}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {eleve.email ?? "—"}
+                                </TableCell>
+                                <TableCell>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRemoveEleve(eleve.id)}
+                                  >
+                                    <Trash2 className="size-4 text-destructive" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     )}
-                    Enregistrer
-                  </Button>
-                </div>
-              </form>
 
-              <Separator />
-
-              {/* ─── Professeurs section ──────────────────────────── */}
-              <div className="flex flex-col gap-3">
-                <h3 className="font-heading text-sm font-medium text-primary">
-                  Professeurs
-                </h3>
-                <div className="flex flex-wrap items-center gap-2">
-                  {classeProfs.map((cp) => (
-                    <Badge
-                      key={`${cp.personnel_id}-${cp.matiere}`}
-                      variant="secondary"
-                      className="gap-3 py-3 pl-3 pr-2 text-sm"
-                    >
-                      {cp.nom} {cp.prenom}
-                      {cp.matiere ? ` - ${cp.matiere}` : ""}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveProf(cp.personnel_id)}
-                        className="ml-1 rounded-full p-1 hover:bg-primary/20"
-                      >
-                        <Trash2 className="size-3" />
-                      </button>
-                    </Badge>
-                  ))}
-
-                  <Dialog open={addProfOpen} onOpenChange={setAddProfOpen}>
-                    <DialogTrigger
-                      render={
-                        <Button variant="outline" size="sm" className="h-7 gap-1 rounded-full px-3 text-xs" />
-                      }
-                    >
-                      <Plus className="size-3" />
-                      Ajouter un professeur
-                    </DialogTrigger>
-                    <DialogContent>
-                      <form onSubmit={handleAddProf}>
-                        <DialogHeader>
-                          <DialogTitle>Affecter un professeur</DialogTitle>
-                          <DialogDescription>
-                            Choisissez un professeur et sa matiere pour cette
-                            classe.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <FieldGroup className="py-4">
-                          <Field>
-                            <FieldLabel htmlFor="add-prof-id">
-                              Professeur
-                            </FieldLabel>
-                            <Select name="personnel_id" required>
-                              <SelectTrigger
-                                id="add-prof-id"
-                                className="w-full"
+                    {/* Action buttons under eleves table */}
+                    <div className="flex flex-wrap gap-2">
+                      {/* Import CSV dialog */}
+                      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+                        <DialogTrigger
+                          render={<Button variant="outline" size="sm" />}
+                        >
+                          <Upload
+                            className="size-4"
+                            data-icon="inline-start"
+                          />
+                          Importer eleves CSV
+                        </DialogTrigger>
+                        <DialogContent>
+                          <form onSubmit={handleImportCSV}>
+                            <DialogHeader>
+                              <DialogTitle>Importer des eleves (CSV)</DialogTitle>
+                              <DialogDescription>
+                                Le fichier CSV doit contenir les colonnes :
+                                identifiant, nom, prenom, email, telephone.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <FieldGroup className="py-4">
+                              <Field>
+                                <FieldLabel htmlFor="import-file">
+                                  Fichier CSV
+                                </FieldLabel>
+                                <Input
+                                  id="import-file"
+                                  name="file"
+                                  type="file"
+                                  accept=".csv"
+                                  required
+                                />
+                              </Field>
+                            </FieldGroup>
+                            <DialogFooter>
+                              <DialogClose
+                                render={<Button variant="outline" />}
                               >
-                                <SelectValue placeholder="Choisir un professeur">
-                                  {(value: string | null) => {
-                                    if (!value) return "Choisir un professeur";
-                                    const p = allPersonnels.find((x) => String(x.id) === value);
-                                    return p ? `${p.prenom} ${p.nom}` : value;
-                                  }}
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {allPersonnels.map((p) => (
-                                    <SelectItem
-                                      key={p.id}
-                                      value={String(p.id)}
-                                    >
-                                      {p.prenom} {p.nom}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                          <Field>
-                            <FieldLabel htmlFor="add-prof-matiere">
-                              Matiere
-                            </FieldLabel>
-                            <Input
-                              id="add-prof-matiere"
-                              name="matiere"
-                              placeholder="Ex: Mathematiques"
-                            />
-                          </Field>
-                        </FieldGroup>
-                        <DialogFooter>
-                          <DialogClose
-                            render={<Button variant="outline" />}
-                          >
-                            Annuler
-                          </DialogClose>
-                          <Button type="submit">Affecter</Button>
-                        </DialogFooter>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </div>
+                                Annuler
+                              </DialogClose>
+                              <Button type="submit">Importer</Button>
+                            </DialogFooter>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
 
-              <Separator />
-
-              {/* ─── Eleves section ───────────────────────────────── */}
-              <div className="flex flex-col gap-3">
-                <h3 className="font-heading text-sm font-medium text-primary">
-                  Eleves ({classeEleves.length})
-                </h3>
-
-                {classeEleves.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Aucun eleve affecte a cette classe.
-                  </p>
-                ) : (
-                  <div className="overflow-hidden rounded-lg border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Nom</TableHead>
-                          <TableHead>Identifiant</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead className="w-16"></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {classeEleves.map((eleve) => (
-                          <TableRow key={eleve.id}>
-                            <TableCell className="font-medium">
-                              {eleve.prenom} {eleve.nom}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {eleve.identifiant}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {eleve.email ?? "—"}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveEleve(eleve.id)}
+                      {/* Ajouter eleve dialog */}
+                      <Dialog open={addEleveOpen} onOpenChange={setAddEleveOpen}>
+                        <DialogTrigger render={<Button size="sm" />}>
+                          <Plus
+                            className="size-4"
+                            data-icon="inline-start"
+                          />
+                          Affecter un eleve
+                        </DialogTrigger>
+                        <DialogContent>
+                          <form onSubmit={handleAddEleve}>
+                            <DialogHeader>
+                              <DialogTitle>Nouvel eleve</DialogTitle>
+                              <DialogDescription>
+                                Creez un eleve et affectez-le directement a la
+                                classe {selected.nom}.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <FieldGroup className="py-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                <Field>
+                                  <FieldLabel htmlFor="add-eleve-nom">
+                                    Nom
+                                  </FieldLabel>
+                                  <Input
+                                    id="add-eleve-nom"
+                                    name="nom"
+                                    required
+                                  />
+                                </Field>
+                                <Field>
+                                  <FieldLabel htmlFor="add-eleve-prenom">
+                                    Prenom
+                                  </FieldLabel>
+                                  <Input
+                                    id="add-eleve-prenom"
+                                    name="prenom"
+                                    required
+                                  />
+                                </Field>
+                              </div>
+                              <Field>
+                                <FieldLabel htmlFor="add-eleve-identifiant">
+                                  Identifiant
+                                </FieldLabel>
+                                <Input
+                                  id="add-eleve-identifiant"
+                                  name="identifiant"
+                                  required
+                                />
+                              </Field>
+                              <Field>
+                                <FieldLabel htmlFor="add-eleve-email">
+                                  Email
+                                </FieldLabel>
+                                <Input
+                                  id="add-eleve-email"
+                                  name="email"
+                                  type="email"
+                                />
+                              </Field>
+                              <Field>
+                                <FieldLabel htmlFor="add-eleve-tel">
+                                  Telephone
+                                </FieldLabel>
+                                <Input
+                                  id="add-eleve-tel"
+                                  name="telephone"
+                                />
+                              </Field>
+                            </FieldGroup>
+                            <DialogFooter>
+                              <DialogClose
+                                render={<Button variant="outline" />}
                               >
-                                <Trash2 className="size-4 text-destructive" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                                Annuler
+                              </DialogClose>
+                              <Button type="submit">Creer et affecter</Button>
+                            </DialogFooter>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
                   </div>
-                )}
-
-                {/* Action buttons under eleves table */}
-                <div className="flex flex-wrap gap-2">
-                  {/* Import CSV dialog */}
-                  <Dialog open={importOpen} onOpenChange={setImportOpen}>
-                    <DialogTrigger
-                      render={<Button variant="outline" size="sm" />}
-                    >
-                      <Upload
-                        className="size-4"
-                        data-icon="inline-start"
-                      />
-                      Importer eleves CSV
-                    </DialogTrigger>
-                    <DialogContent>
-                      <form onSubmit={handleImportCSV}>
-                        <DialogHeader>
-                          <DialogTitle>Importer des eleves (CSV)</DialogTitle>
-                          <DialogDescription>
-                            Le fichier CSV doit contenir les colonnes :
-                            identifiant, nom, prenom, email, telephone.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <FieldGroup className="py-4">
-                          <Field>
-                            <FieldLabel htmlFor="import-file">
-                              Fichier CSV
-                            </FieldLabel>
-                            <Input
-                              id="import-file"
-                              name="file"
-                              type="file"
-                              accept=".csv"
-                              required
-                            />
-                          </Field>
-                        </FieldGroup>
-                        <DialogFooter>
-                          <DialogClose
-                            render={<Button variant="outline" />}
-                          >
-                            Annuler
-                          </DialogClose>
-                          <Button type="submit">Importer</Button>
-                        </DialogFooter>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-
-                  {/* Ajouter eleve dialog */}
-                  <Dialog open={addEleveOpen} onOpenChange={setAddEleveOpen}>
-                    <DialogTrigger render={<Button size="sm" />}>
-                      <Plus
-                        className="size-4"
-                        data-icon="inline-start"
-                      />
-                      Affecter un eleve
-                    </DialogTrigger>
-                    <DialogContent>
-                      <form onSubmit={handleAddEleve}>
-                        <DialogHeader>
-                          <DialogTitle>Nouvel eleve</DialogTitle>
-                          <DialogDescription>
-                            Creez un eleve et affectez-le directement a la
-                            classe {selected.nom}.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <FieldGroup className="py-4">
-                          <div className="grid grid-cols-2 gap-4">
-                            <Field>
-                              <FieldLabel htmlFor="add-eleve-nom">
-                                Nom
-                              </FieldLabel>
-                              <Input
-                                id="add-eleve-nom"
-                                name="nom"
-                                required
-                              />
-                            </Field>
-                            <Field>
-                              <FieldLabel htmlFor="add-eleve-prenom">
-                                Prenom
-                              </FieldLabel>
-                              <Input
-                                id="add-eleve-prenom"
-                                name="prenom"
-                                required
-                              />
-                            </Field>
-                          </div>
-                          <Field>
-                            <FieldLabel htmlFor="add-eleve-identifiant">
-                              Identifiant
-                            </FieldLabel>
-                            <Input
-                              id="add-eleve-identifiant"
-                              name="identifiant"
-                              required
-                            />
-                          </Field>
-                          <Field>
-                            <FieldLabel htmlFor="add-eleve-email">
-                              Email
-                            </FieldLabel>
-                            <Input
-                              id="add-eleve-email"
-                              name="email"
-                              type="email"
-                            />
-                          </Field>
-                          <Field>
-                            <FieldLabel htmlFor="add-eleve-tel">
-                              Telephone
-                            </FieldLabel>
-                            <Input
-                              id="add-eleve-tel"
-                              name="telephone"
-                            />
-                          </Field>
-                        </FieldGroup>
-                        <DialogFooter>
-                          <DialogClose
-                            render={<Button variant="outline" />}
-                          >
-                            Annuler
-                          </DialogClose>
-                          <Button type="submit">Creer et affecter</Button>
-                        </DialogFooter>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </div>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         ) : (
