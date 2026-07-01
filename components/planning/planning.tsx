@@ -78,6 +78,9 @@ export function Planning({
   const [draftSlot, setDraftSlot] = React.useState("0");
   const [draftPersonnelId, setDraftPersonnelId] = React.useState("");
 
+  // ─── dialog de détail (clic sur un créneau) ───
+  const [detail, setDetail] = React.useState<PlanningEvent | null>(null);
+
   // Cible par défaut le premier personnel proposé (options chargées en asynchrone).
   React.useEffect(() => {
     if (hasPersonnelChoice && !draftPersonnelId) {
@@ -126,8 +129,39 @@ export function Planning({
         slots={slots}
         editable={editable}
         onCellClick={openAdd}
+        onEventClick={setDetail}
         emptyLabel={emptyLabel}
       />
+
+      {/* ─── Dialog de détail d'un créneau ─── */}
+      <Dialog
+        open={!!detail}
+        onOpenChange={(o) => !o && setDetail(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{detail?.title}</DialogTitle>
+            {detail?.subtitle && (
+              <DialogDescription>{detail.subtitle}</DialogDescription>
+            )}
+          </DialogHeader>
+          {detail && (
+            <dl className="grid grid-cols-[6rem_1fr] gap-x-4 gap-y-2 py-4 text-sm">
+              <dt className="text-muted-foreground">Jour</dt>
+              <dd className="font-medium">{JOUR_LABELS[detail.jour - 1]}</dd>
+              <dt className="text-muted-foreground">Horaire</dt>
+              <dd className="font-medium tabular-nums">
+                {fmtTime(detail.start)} – {fmtTime(detail.end)}
+              </dd>
+            </dl>
+          )}
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>
+              Fermer
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Dialog d'ajout ─── */}
       {editable && (
@@ -250,12 +284,14 @@ function WeekView({
   slots,
   editable,
   onCellClick,
+  onEventClick,
   emptyLabel,
 }: {
   events: PlanningEvent[];
   slots: TimeSlot[];
   editable: boolean;
   onCellClick: (jour: number, slotIdx: number) => void;
+  onEventClick: (event: PlanningEvent) => void;
   emptyLabel: string;
 }) {
   const cols = `${GUTTER} repeat(7, minmax(0, 1fr))`;
@@ -306,7 +342,11 @@ function WeekView({
                     {cellEvents.length > 0 ? (
                       <div className="flex flex-col gap-1">
                         {cellEvents.map((e) => (
-                          <EventChip key={e.id} event={e} />
+                          <EventChip
+                            key={e.id}
+                            event={e}
+                            onClick={() => onEventClick(e)}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -331,14 +371,22 @@ function WeekView({
   );
 }
 
-function EventChip({ event: e }: { event: PlanningEvent }) {
+function EventChip({
+  event: e,
+  onClick,
+}: {
+  event: PlanningEvent;
+  onClick: () => void;
+}) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       title={`${fmtTime(e.start)}–${fmtTime(e.end)} · ${e.title}${
         e.subtitle ? ` · ${e.subtitle}` : ""
       }`}
       className={cn(
-        "overflow-hidden rounded-md border-l-4 px-1.5 py-1 text-[0.7rem] leading-tight shadow-sm",
+        "w-full cursor-pointer overflow-hidden rounded-md border-l-4 px-1.5 py-1 text-left text-[0.7rem] leading-tight shadow-sm transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         eventColor(e.colorIndex)
       )}
     >
@@ -346,6 +394,6 @@ function EventChip({ event: e }: { event: PlanningEvent }) {
       {e.subtitle && (
         <div className="truncate text-muted-foreground">{e.subtitle}</div>
       )}
-    </div>
+    </button>
   );
 }

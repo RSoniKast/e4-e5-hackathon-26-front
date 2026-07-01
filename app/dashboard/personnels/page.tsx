@@ -73,8 +73,8 @@ export default function PersonnelsPage() {
       }
       setHorairesMap(horaires);
 
-      if (data.length > 0 && selectedId === null) {
-        setSelectedId(data[0].id);
+      if (data.length > 0) {
+        setSelectedId((prev) => prev ?? data[0].id);
       }
     } catch {
       toast.error("Erreur lors du chargement des personnels");

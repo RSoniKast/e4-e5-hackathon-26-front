@@ -9,6 +9,7 @@ import {
   Upload,
   Download,
   UserPlus,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -34,6 +35,7 @@ import {
   getHoraires,
   importEleves,
   createEleve,
+  updateEleve,
   ApiError,
 } from "@/lib/api";
 import { Planning } from "@/components/planning/planning";
@@ -79,6 +81,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+// Telephone : chiffres, espaces et + autorises, au moins un chiffre
+const TEL_PATTERN = "[+0-9 ]*[0-9][+0-9 ]*";
+const TEL_TITLE = "Chiffres, espaces et + autorises";
+
 // Generate school year options (current +-2)
 function getAnneeScolaireOptions(): string[] {
   const currentYear = new Date().getFullYear();
@@ -120,6 +126,7 @@ export default function ClassesElevesPage() {
   const [addProfOpen, setAddProfOpen] = React.useState(false);
   const [addEleveOpen, setAddEleveOpen] = React.useState(false);
   const [importOpen, setImportOpen] = React.useState(false);
+  const [editEleve, setEditEleve] = React.useState<EleveRead | null>(null);
 
   const loadData = React.useCallback(async () => {
     try {
@@ -149,8 +156,8 @@ export default function ClassesElevesPage() {
       setElevesMap(eMap);
       setPersonnelsMap(pMap);
 
-      if (classesData.length > 0 && selectedId === null) {
-        setSelectedId(classesData[0].id);
+      if (classesData.length > 0) {
+        setSelectedId((prev) => prev ?? classesData[0].id);
       }
     } catch {
       toast.error("Erreur lors du chargement des classes");
@@ -325,6 +332,30 @@ export default function ClassesElevesPage() {
     }
   }
 
+  async function handleEditEleve(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editEleve) return;
+    const fd = new FormData(e.currentTarget);
+    try {
+      await updateEleve(editEleve.id, {
+        identifiant: fd.get("identifiant") as string,
+        nom: fd.get("nom") as string,
+        prenom: fd.get("prenom") as string,
+        email: (fd.get("email") as string) || null,
+        telephone: (fd.get("telephone") as string) || null,
+      });
+      toast.success(
+        `${fd.get("prenom")} ${fd.get("nom")} modifie`
+      );
+      setEditEleve(null);
+      await loadData();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.detail : "Erreur lors de la modification"
+      );
+    }
+  }
+
   async function handleRemoveEleve(eleveId: number) {
     if (!selected) return;
     try {
@@ -431,7 +462,7 @@ export default function ClassesElevesPage() {
               <SelectGroup>
                 {anneeOptions.map((a) => (
                   <SelectItem key={a} value={a}>
-                    Annee {a}
+                    {a}
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -792,7 +823,8 @@ export default function ClassesElevesPage() {
                               <TableHead>Nom</TableHead>
                               <TableHead>Identifiant</TableHead>
                               <TableHead>Email</TableHead>
-                              <TableHead className="w-16"></TableHead>
+                              <TableHead>Telephone</TableHead>
+                              <TableHead className="w-24"></TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -807,26 +839,39 @@ export default function ClassesElevesPage() {
                                 <TableCell className="text-muted-foreground">
                                   {eleve.email ?? "—"}
                                 </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {eleve.telephone ?? "—"}
+                                </TableCell>
                                 <TableCell>
-                                  <ConfirmDialog
-                                    title="Retirer cet élève ?"
-                                    description={
-                                      <>
-                                        {eleve.prenom} {eleve.nom} sera retiré de
-                                        la classe
-                                        {selected ? ` ${selected.nom}` : ""}.
-                                      </>
-                                    }
-                                    confirmLabel="Retirer"
-                                    onConfirm={() =>
-                                      handleRemoveEleve(eleve.id)
-                                    }
-                                    trigger={
-                                      <Button variant="ghost" size="sm">
-                                        <Trash2 className="size-4 text-destructive" />
-                                      </Button>
-                                    }
-                                  />
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setEditEleve(eleve)}
+                                      aria-label="Modifier l'eleve"
+                                    >
+                                      <Pencil className="size-4" />
+                                    </Button>
+                                    <ConfirmDialog
+                                      title="Retirer cet élève ?"
+                                      description={
+                                        <>
+                                          {eleve.prenom} {eleve.nom} sera retiré
+                                          de la classe
+                                          {selected ? ` ${selected.nom}` : ""}.
+                                        </>
+                                      }
+                                      confirmLabel="Retirer"
+                                      onConfirm={() =>
+                                        handleRemoveEleve(eleve.id)
+                                      }
+                                      trigger={
+                                        <Button variant="ghost" size="sm">
+                                          <Trash2 className="size-4 text-destructive" />
+                                        </Button>
+                                      }
+                                    />
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -951,6 +996,11 @@ export default function ClassesElevesPage() {
                                 <Input
                                   id="add-eleve-tel"
                                   name="telephone"
+                                  type="tel"
+                                  inputMode="tel"
+                                  pattern={TEL_PATTERN}
+                                  title={TEL_TITLE}
+                                  placeholder="+33 6 12 34 56 78"
                                 />
                               </Field>
                             </FieldGroup>
@@ -966,6 +1016,99 @@ export default function ClassesElevesPage() {
                         </DialogContent>
                       </Dialog>
                     </div>
+
+                    {/* Modifier eleve dialog */}
+                    <Dialog
+                      open={editEleve !== null}
+                      onOpenChange={(o) => {
+                        if (!o) setEditEleve(null);
+                      }}
+                    >
+                      <DialogContent>
+                        {editEleve && (
+                          <form onSubmit={handleEditEleve} key={editEleve.id}>
+                            <DialogHeader>
+                              <DialogTitle>Modifier l&apos;eleve</DialogTitle>
+                              <DialogDescription>
+                                Modifiez les informations de {editEleve.prenom}{" "}
+                                {editEleve.nom}.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <FieldGroup className="py-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                <Field>
+                                  <FieldLabel htmlFor="edit-eleve-nom">
+                                    Nom
+                                  </FieldLabel>
+                                  <Input
+                                    id="edit-eleve-nom"
+                                    name="nom"
+                                    defaultValue={editEleve.nom}
+                                    required
+                                  />
+                                </Field>
+                                <Field>
+                                  <FieldLabel htmlFor="edit-eleve-prenom">
+                                    Prenom
+                                  </FieldLabel>
+                                  <Input
+                                    id="edit-eleve-prenom"
+                                    name="prenom"
+                                    defaultValue={editEleve.prenom}
+                                    required
+                                  />
+                                </Field>
+                              </div>
+                              <Field>
+                                <FieldLabel htmlFor="edit-eleve-identifiant">
+                                  Identifiant
+                                </FieldLabel>
+                                <Input
+                                  id="edit-eleve-identifiant"
+                                  name="identifiant"
+                                  defaultValue={editEleve.identifiant}
+                                  required
+                                />
+                              </Field>
+                              <Field>
+                                <FieldLabel htmlFor="edit-eleve-email">
+                                  Email
+                                </FieldLabel>
+                                <Input
+                                  id="edit-eleve-email"
+                                  name="email"
+                                  type="email"
+                                  defaultValue={editEleve.email ?? ""}
+                                />
+                              </Field>
+                              <Field>
+                                <FieldLabel htmlFor="edit-eleve-tel">
+                                  Telephone
+                                </FieldLabel>
+                                <Input
+                                  id="edit-eleve-tel"
+                                  name="telephone"
+                                  type="tel"
+                                  inputMode="tel"
+                                  pattern={TEL_PATTERN}
+                                  title={TEL_TITLE}
+                                  placeholder="+33 6 12 34 56 78"
+                                  defaultValue={editEleve.telephone ?? ""}
+                                />
+                              </Field>
+                            </FieldGroup>
+                            <DialogFooter>
+                              <DialogClose
+                                render={<Button variant="outline" />}
+                              >
+                                Annuler
+                              </DialogClose>
+                              <Button type="submit">Enregistrer</Button>
+                            </DialogFooter>
+                          </form>
+                        )}
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </TabsContent>
               </Tabs>

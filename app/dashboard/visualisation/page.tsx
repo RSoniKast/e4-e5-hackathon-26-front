@@ -14,6 +14,7 @@ import {
   UserCheck,
   UserX,
   Wind,
+  FilterX,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -60,6 +61,10 @@ export default function VisualisationPage() {
   );
   const [searchQuery, setSearchQuery] = React.useState("");
   const [filterSiteId, setFilterSiteId] = React.useState<string>("");
+  const [filterBatimentId, setFilterBatimentId] = React.useState<string>("");
+  const [filterPresence, setFilterPresence] = React.useState<string>("");
+  const [filterFenetre, setFilterFenetre] = React.useState<string>("");
+  const [filterPorte, setFilterPorte] = React.useState<string>("");
 
   const loadData = React.useCallback(
     async (showRefresh = false) => {
@@ -124,12 +129,45 @@ export default function VisualisationPage() {
     return sites.find((s) => s.id === bat.site_id)?.nom ?? "—";
   };
 
+  const batimentOptions = filterSiteId
+    ? batiments.filter((b) => b.site_id === parseInt(filterSiteId))
+    : batiments;
+
+  const hasActiveFilters =
+    !!searchQuery ||
+    !!filterSiteId ||
+    !!filterBatimentId ||
+    !!filterPresence ||
+    !!filterFenetre ||
+    !!filterPorte;
+
+  const resetFilters = () => {
+    setSearchQuery("");
+    setFilterSiteId("");
+    setFilterBatimentId("");
+    setFilterPresence("");
+    setFilterFenetre("");
+    setFilterPorte("");
+  };
+
   const filteredSalles = salles.filter((s) => {
     if (searchQuery && !s.nom.toLowerCase().includes(searchQuery.toLowerCase()))
       return false;
     if (filterSiteId) {
       const bat = batiments.find((b) => b.id === s.batiment_id);
       if (!bat || bat.site_id !== parseInt(filterSiteId)) return false;
+    }
+    if (filterBatimentId && s.batiment_id !== parseInt(filterBatimentId))
+      return false;
+    const m = mesuresMap[s.id]?.derniere_mesure;
+    if (filterPresence) {
+      if (!m || m.presence !== (filterPresence === "1")) return false;
+    }
+    if (filterFenetre) {
+      if (!m || m.fenetre_ouverte !== (filterFenetre === "1")) return false;
+    }
+    if (filterPorte) {
+      if (!m || m.porte_ouverte !== (filterPorte === "1")) return false;
     }
     return true;
   });
@@ -181,7 +219,10 @@ export default function VisualisationPage() {
           </InputGroup>
           <Select
             value={filterSiteId}
-            onValueChange={(v) => setFilterSiteId(v ?? "")}
+            onValueChange={(v) => {
+              setFilterSiteId(v ?? "");
+              setFilterBatimentId("");
+            }}
           >
             <SelectTrigger className="w-36" aria-label="Filtrer par site">
               <SelectValue placeholder="Site">
@@ -202,6 +243,94 @@ export default function VisualisationPage() {
               </SelectGroup>
             </SelectContent>
           </Select>
+          <Select
+            value={filterBatimentId}
+            onValueChange={(v) => setFilterBatimentId(v ?? "")}
+          >
+            <SelectTrigger className="w-36" aria-label="Filtrer par bâtiment">
+              <SelectValue placeholder="Bâtiment">
+                {(value: string | null) => {
+                  if (!value) return "Bâtiment";
+                  const b = batiments.find((x) => String(x.id) === value);
+                  return b ? b.nom : value;
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {batimentOptions.map((b) => (
+                  <SelectItem key={b.id} value={String(b.id)}>
+                    {b.nom}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Select
+            value={filterPresence}
+            onValueChange={(v) => setFilterPresence(v ?? "")}
+          >
+            <SelectTrigger className="w-32" aria-label="Filtrer par présence">
+              <SelectValue placeholder="Présence">
+                {(value: string | null) =>
+                  value ? (value === "1" ? "Occupée" : "Vide") : "Présence"
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="1">Occupée</SelectItem>
+                <SelectItem value="0">Vide</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Select
+            value={filterFenetre}
+            onValueChange={(v) => setFilterFenetre(v ?? "")}
+          >
+            <SelectTrigger className="w-32" aria-label="Filtrer par fenêtre">
+              <SelectValue placeholder="Fenêtre">
+                {(value: string | null) =>
+                  value ? (value === "1" ? "Ouverte" : "Fermée") : "Fenêtre"
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="1">Ouverte</SelectItem>
+                <SelectItem value="0">Fermée</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Select
+            value={filterPorte}
+            onValueChange={(v) => setFilterPorte(v ?? "")}
+          >
+            <SelectTrigger className="w-32" aria-label="Filtrer par porte">
+              <SelectValue placeholder="Porte">
+                {(value: string | null) =>
+                  value ? (value === "1" ? "Ouverte" : "Fermée") : "Porte"
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="1">Ouverte</SelectItem>
+                <SelectItem value="0">Fermée</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetFilters}
+              aria-label="Réinitialiser les filtres"
+            >
+              <FilterX className="size-4" data-icon="inline-start" />
+              Réinitialiser
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
