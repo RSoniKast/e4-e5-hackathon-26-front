@@ -149,9 +149,10 @@ export default function ClassesElevesPage() {
       setElevesMap(eMap);
       setPersonnelsMap(pMap);
 
-      if (classesData.length > 0 && selectedId === null) {
-        setSelectedId(classesData[0].id);
-      }
+      setSelectedId((prev) => {
+        if (prev !== null && classesData.some((c) => c.id === prev)) return prev;
+        return classesData.length > 0 ? classesData[0].id : null;
+      });
     } catch {
       toast.error("Erreur lors du chargement des classes");
     } finally {
@@ -164,7 +165,7 @@ export default function ClassesElevesPage() {
   }, [loadData]);
 
   const selected =
-    classes.find((c) => c.id === selectedId) ?? classes[0] ?? null;
+    classes.find((c) => c.id === selectedId) ?? null;
   const classeEleves = selected ? elevesMap[selected.id] ?? [] : [];
   const classeProfs = selected ? personnelsMap[selected.id] ?? [] : [];
 
@@ -340,13 +341,45 @@ export default function ClassesElevesPage() {
 
   async function handleImportCSV(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!selected) return;
     const fd = new FormData(e.currentTarget);
     const file = fd.get("file") as File;
     if (!file || !file.name) return;
     try {
+      // 1. Parse le CSV côté client pour extraire les identifiants
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      const headers = lines[0].split(",").map((h) => h.trim());
+      const idIdx = headers.indexOf("identifiant");
+      const identifiants = new Set<string>();
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+        if (idIdx >= 0 && cols[idIdx]) identifiants.add(cols[idIdx]);
+      }
+
+      // 2. Importer les élèves dans la base (création globale)
       const result = await importEleves(file);
+
+      // 3. Récupérer tous les élèves pour trouver les IDs par identifiant
+      const allEleves = await getEleves();
+      const elevesToAffect = allEleves.filter((el) => identifiants.has(el.identifiant));
+
+      // 4. Affecter chaque élève à la classe sélectionnée
+      let affectes = 0;
+      for (const eleve of elevesToAffect) {
+        try {
+          await affecterEleveClasse(selected.id, {
+            eleve_id: eleve.id,
+            annee_scolaire: selected.annee_scolaire,
+          });
+          affectes++;
+        } catch {
+          // Déjà affecté ou autre conflit — on ignore silencieusement
+        }
+      }
+
       toast.success(
-        `Import : ${result.importes} importe(s), ${result.ignores} ignore(s)${result.erreurs.length > 0
+        `Import : ${result.importes} importe(s), ${result.ignores} ignore(s), ${affectes} affecte(s) a la classe${result.erreurs.length > 0
           ? `, ${result.erreurs.length} erreur(s)`
           : ""
         }`
@@ -375,9 +408,7 @@ export default function ClassesElevesPage() {
           e.prenom,
           e.email ?? "",
           e.telephone ?? "",
-        ]
-          .map((v) => `"${v.replace(/"/g, '""')}"`)
-          .join(",")
+        ].join(",")
       );
     }
     const blob = new Blob([csvRows.join("\n")], {
