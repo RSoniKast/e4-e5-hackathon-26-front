@@ -27,7 +27,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -266,21 +265,20 @@ function WeekView({
 
   return (
     <div className="overflow-hidden rounded-lg border">
-      <ScrollArea className="max-h-[36rem]">
-        <div
-          className="grid"
-          style={{ gridTemplateColumns: cols, gridTemplateRows: rows }}
-        >
-          {/* En-tête */}
-          <div className="sticky top-0 z-10 border-b bg-muted/60 backdrop-blur" />
-          {JOUR_LABELS.map((label) => (
-            <div
-              key={label}
-              className="sticky top-0 z-10 border-b border-l bg-muted/60 px-2 py-1.5 text-center text-sm font-medium backdrop-blur"
-            >
-              {label}
-            </div>
-          ))}
+      <div
+        className="grid"
+        style={{ gridTemplateColumns: cols, gridTemplateRows: rows }}
+      >
+        {/* En-tête */}
+        <div className="border-b bg-muted/60" />
+        {JOUR_LABELS.map((label) => (
+          <div
+            key={label}
+            className="border-b border-l bg-muted/60 px-2 py-1.5 text-center text-sm font-medium"
+          >
+            {label}
+          </div>
+        ))}
 
           {/* Lignes = créneaux */}
           {slots.map((slot, slotIdx) => (
@@ -323,8 +321,7 @@ function WeekView({
               })}
             </React.Fragment>
           ))}
-        </div>
-      </ScrollArea>
+      </div>
       {events.length === 0 && !editable && (
         <p className="border-t p-3 text-center text-sm text-muted-foreground">
           {emptyLabel}

@@ -39,6 +39,7 @@ import {
 import { Planning } from "@/components/planning/planning";
 import { horairesToEvents, type PlanningEvent } from "@/lib/planning";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -391,7 +392,7 @@ export default function ClassesElevesPage() {
     toast.success("Export telecharge");
   }
 
-  if (loading) {
+  if (loading && classes.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />
@@ -564,14 +565,22 @@ export default function ClassesElevesPage() {
                 Classe —{" "}
                 <span className="text-primary">{selected.nom}</span>
               </CardTitle>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleDelete}
-              >
-                <Trash2 className="size-4" data-icon="inline-start" />
-                Supprimer
-              </Button>
+              <ConfirmDialog
+                title="Supprimer cette classe ?"
+                description={
+                  <>
+                    La classe {selected.nom} sera définitivement supprimée.
+                    Cette action est irréversible.
+                  </>
+                }
+                onConfirm={handleDelete}
+                trigger={
+                  <Button variant="destructive" size="sm">
+                    <Trash2 className="size-4" data-icon="inline-start" />
+                    Supprimer
+                  </Button>
+                }
+              />
             </CardHeader>
             <CardContent>
               <Tabs
@@ -651,13 +660,27 @@ export default function ClassesElevesPage() {
                         >
                           {cp.nom} {cp.prenom}
                           {cp.matiere ? ` - ${cp.matiere}` : ""}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveProf(cp.personnel_id)}
-                            className="ml-1 rounded-full p-1 hover:bg-primary/20"
-                          >
-                            <Trash2 className="size-3" />
-                          </button>
+                          <ConfirmDialog
+                            title="Retirer ce professeur ?"
+                            description={
+                              <>
+                                {cp.nom} {cp.prenom} sera retiré de la classe
+                                {selected ? ` ${selected.nom}` : ""}.
+                              </>
+                            }
+                            confirmLabel="Retirer"
+                            onConfirm={() =>
+                              handleRemoveProf(cp.personnel_id)
+                            }
+                            trigger={
+                              <button
+                                type="button"
+                                className="ml-1 rounded-full p-1 hover:bg-primary/20"
+                              >
+                                <Trash2 className="size-3" />
+                              </button>
+                            }
+                          />
                         </Badge>
                       ))}
 
@@ -785,13 +808,25 @@ export default function ClassesElevesPage() {
                                   {eleve.email ?? "—"}
                                 </TableCell>
                                 <TableCell>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRemoveEleve(eleve.id)}
-                                  >
-                                    <Trash2 className="size-4 text-destructive" />
-                                  </Button>
+                                  <ConfirmDialog
+                                    title="Retirer cet élève ?"
+                                    description={
+                                      <>
+                                        {eleve.prenom} {eleve.nom} sera retiré de
+                                        la classe
+                                        {selected ? ` ${selected.nom}` : ""}.
+                                      </>
+                                    }
+                                    confirmLabel="Retirer"
+                                    onConfirm={() =>
+                                      handleRemoveEleve(eleve.id)
+                                    }
+                                    trigger={
+                                      <Button variant="ghost" size="sm">
+                                        <Trash2 className="size-4 text-destructive" />
+                                      </Button>
+                                    }
+                                  />
                                 </TableCell>
                               </TableRow>
                             ))}

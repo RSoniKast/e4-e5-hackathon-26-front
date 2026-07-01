@@ -17,6 +17,7 @@ import {
 import { Planning } from "@/components/planning/planning";
 import { horairesToEvents, type HoraireDraft } from "@/lib/planning";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -294,10 +295,22 @@ export default function PersonnelsPage() {
                   {p.prenom} {p.nom}
                 </span>
               </CardTitle>
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
-                <Trash2 className="size-4" data-icon="inline-start" />
-                Supprimer
-              </Button>
+              <ConfirmDialog
+                title="Supprimer ce personnel ?"
+                description={
+                  <>
+                    {p.prenom} {p.nom} sera définitivement supprimé. Cette action
+                    est irréversible.
+                  </>
+                }
+                onConfirm={handleDelete}
+                trigger={
+                  <Button variant="destructive" size="sm">
+                    <Trash2 className="size-4" data-icon="inline-start" />
+                    Supprimer
+                  </Button>
+                }
+              />
             </CardHeader>
             <CardContent>
               <Tabs key={selectedId} defaultValue="info" className="gap-6">

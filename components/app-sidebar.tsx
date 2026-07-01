@@ -137,10 +137,6 @@ export function AppSidebar() {
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                  <DropdownMenuItem>
-                    <Settings />
-                    Paramètres
-                  </DropdownMenuItem>
                   <DropdownMenuItem
                     variant="destructive"
                     onClick={logout}
