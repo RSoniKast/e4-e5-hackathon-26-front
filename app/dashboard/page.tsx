@@ -151,9 +151,9 @@ export default function SitesBatimentsPage() {
       setBatimentsMap(batResults);
       setSallesMap(salleResults);
 
-      // Auto-select first site
-      if (sitesData.length > 0 && !selected) {
-        setSelected(`site-${sitesData[0].id}`);
+      // Auto-select first site (only if nothing selected — preserve current selection on refresh)
+      if (sitesData.length > 0) {
+        setSelected((prev) => prev || `site-${sitesData[0].id}`);
       }
     } catch (err) {
       toast.error("Erreur lors du chargement des données");

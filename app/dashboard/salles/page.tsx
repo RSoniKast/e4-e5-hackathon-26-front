@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, Plus, Loader2, Trash2 } from "lucide-react";
+import { Search, Plus, Loader2, Trash2, FilterX } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -66,6 +66,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+// Valeur sentinelle de l'option « Aucun calculateur » (mappée sur "" en état).
+const NONE_CALC = "__none__";
+
 export default function SallesPage() {
   const [salles, setSalles] = React.useState<SalleRead[]>([]);
   const [batiments, setBatiments] = React.useState<BatimentRead[]>([]);
@@ -79,8 +82,8 @@ export default function SallesPage() {
   const [filterSiteId, setFilterSiteId] = React.useState<string>("");
   const [filterBatimentId, setFilterBatimentId] = React.useState<string>("");
   const [createOpen, setCreateOpen] = React.useState(false);
-  // Calculateurs liés à la salle sélectionnée (multi-select contrôlé, ids en string).
-  const [selectedCalcIds, setSelectedCalcIds] = React.useState<string[]>([]);
+  // Calculateur lié à la salle sélectionnée (1 max, id en string ; "" = aucun).
+  const [selectedCalcId, setSelectedCalcId] = React.useState<string>("");
   const [planningEvents, setPlanningEvents] = React.useState<PlanningEvent[]>(
     []
   );
@@ -135,8 +138,8 @@ export default function SallesPage() {
       setSites(sitesData);
       setCalculateurs(calcData);
 
-      if (sallesData.length > 0 && selectedId === null) {
-        setSelectedId(sallesData[0].id);
+      if (sallesData.length > 0) {
+        setSelectedId((prev) => prev ?? sallesData[0].id);
       }
     } catch {
       toast.error("Erreur lors du chargement des salles");
@@ -171,17 +174,22 @@ export default function SallesPage() {
     return true;
   });
 
+  const hasActiveFilters = !!searchQuery || !!filterSiteId || !!filterBatimentId;
+
+  const resetFilters = () => {
+    setSearchQuery("");
+    setFilterSiteId("");
+    setFilterBatimentId("");
+  };
+
   const selected = salles.find((s) => s.id === selectedId) ?? salles[0];
   const allCalcs = calculateurs;
 
-  // Aligne la sélection du multi-select sur les calculateurs réellement liés
-  // à la salle courante (au changement de salle ou après un rechargement).
+  // Aligne le sélecteur sur le calculateur réellement lié à la salle courante
+  // (au changement de salle ou après un rechargement). "" si aucun.
   React.useEffect(() => {
-    setSelectedCalcIds(
-      calculateurs
-        .filter((c) => c.salle_id === selected?.id)
-        .map((c) => String(c.id))
-    );
+    const linked = calculateurs.find((c) => c.salle_id === selected?.id);
+    setSelectedCalcId(linked ? String(linked.id) : "");
   }, [selected?.id, calculateurs]);
 
   // Initialise les sélecteurs Site/Bâtiment du formulaire de détail sur la
@@ -220,16 +228,13 @@ export default function SallesPage() {
         heure_fermeture: (formData.get("salle-heure") as string) || null,
       });
 
-      // Update calculateur links: assign salle_id to selected calculateurs, remove from the rest
-      const checkedCalcIds = new Set(
-        selectedCalcIds.map((v) => parseInt(v, 10))
-      );
+      // 1 calculateur max par salle : on lie celui choisi, on délie les autres.
+      const targetCalcId = selectedCalcId ? parseInt(selectedCalcId, 10) : null;
       for (const calc of allCalcs) {
-        const shouldBeLinked = checkedCalcIds.has(calc.id);
         const isLinked = calc.salle_id === selected.id;
-        if (shouldBeLinked && !isLinked) {
+        if (calc.id === targetCalcId && !isLinked) {
           await updateCalculateur(calc.id, { salle_id: selected.id });
-        } else if (!shouldBeLinked && isLinked) {
+        } else if (calc.id !== targetCalcId && isLinked) {
           await updateCalculateur(calc.id, { salle_id: null });
         }
       }
@@ -363,6 +368,17 @@ export default function SallesPage() {
               </SelectGroup>
             </SelectContent>
           </Select>
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetFilters}
+              aria-label="Réinitialiser les filtres"
+            >
+              <FilterX className="size-4" data-icon="inline-start" />
+              Réinitialiser
+            </Button>
+          )}
 
           <Dialog
             open={createOpen}
@@ -483,13 +499,12 @@ export default function SallesPage() {
                 <TableHead>Nom</TableHead>
                 <TableHead className="w-24">Capacité</TableHead>
                 <TableHead>Bâtiment / Site</TableHead>
-                <TableHead className="w-16 text-right">Calc.</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredSalles.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                  <TableCell colSpan={3} className="text-center text-muted-foreground">
                     Aucune salle trouvée
                   </TableCell>
                 </TableRow>
@@ -505,9 +520,6 @@ export default function SallesPage() {
                     <TableCell>{s.capacite ?? "—"}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {getBatimentName(s.batiment_id)} · {getSiteName(s.batiment_id)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {calculateurs.filter((c) => c.salle_id === s.id).length}
                     </TableCell>
                   </TableRow>
                 ))
@@ -633,7 +645,7 @@ export default function SallesPage() {
 
                 <div className="flex flex-col gap-3">
                   <h3 className="font-heading text-sm font-medium text-primary">
-                    Calculateurs liés
+                    Calculateur lié
                   </h3>
                   {allCalcs.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
@@ -642,23 +654,28 @@ export default function SallesPage() {
                   ) : (
                     <Field>
                       <Select
-                        multiple
-                        value={selectedCalcIds}
-                        onValueChange={(v) => setSelectedCalcIds(v as string[])}
+                        value={selectedCalcId || NONE_CALC}
+                        onValueChange={(v) =>
+                          setSelectedCalcId(v === NONE_CALC ? "" : (v ?? ""))
+                        }
                       >
-                        <SelectTrigger className="w-full" aria-label="Calculateurs liés">
-                          <SelectValue>
-                            {(value: string[]) =>
-                              !value || value.length === 0
-                                ? "Aucun calculateur lié"
-                                : `${value.length} calculateur${
-                                    value.length > 1 ? "s" : ""
-                                  } lié${value.length > 1 ? "s" : ""}`
-                            }
+                        <SelectTrigger className="w-full" aria-label="Calculateur lié">
+                          <SelectValue placeholder="Aucun calculateur lié">
+                            {(value: string | null) => {
+                              if (!value || value === NONE_CALC)
+                                return "Aucun calculateur lié";
+                              const c = allCalcs.find((x) => String(x.id) === value);
+                              return c
+                                ? `${c.nom} · ${c.ip_adresse ?? "pas d'IP"}`
+                                : value;
+                            }}
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent className="max-h-72">
                           <SelectGroup>
+                            <SelectItem value={NONE_CALC}>
+                              Aucun calculateur
+                            </SelectItem>
                             {allCalcs.map((c) => (
                               <SelectItem key={c.id} value={String(c.id)}>
                                 {c.nom} · {c.ip_adresse ?? "pas d'IP"}

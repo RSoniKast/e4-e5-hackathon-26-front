@@ -9,6 +9,7 @@ import {
   GraduationCap,
   Activity,
   Eye,
+  Radio,
   School,
   ChevronsUpDown,
   LogOut,
@@ -52,6 +53,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Classes & Élèves", icon: GraduationCap, href: "/dashboard/classes" },
   { label: "Monitoring centrales", icon: Activity, href: "/dashboard/monitoring" },
   { label: "Visualisation salles", icon: Eye, href: "/dashboard/visualisation" },
+  { label: "Capteur", icon: Radio, href: "/dashboard/capteur" },
 ];
 
 export function AppSidebar() {
