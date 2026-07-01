@@ -23,6 +23,7 @@ import {
 import { Planning } from "@/components/planning/planning";
 import { horairesToEvents, type PlanningEvent, type HoraireDraft } from "@/lib/planning";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Card,
   CardContent,
@@ -323,7 +324,7 @@ export default function SallesPage() {
             />
           </InputGroup>
           <Select value={filterSiteId} onValueChange={(v) => { setFilterSiteId(v ?? ""); setFilterBatimentId(""); }}>
-            <SelectTrigger className="w-28" aria-label="Filtrer par site">
+            <SelectTrigger className="w-36" aria-label="Filtrer par site">
               <SelectValue placeholder="Site">
                 {(value: string | null) => {
                   if (!value) return "Site";
@@ -343,7 +344,7 @@ export default function SallesPage() {
             </SelectContent>
           </Select>
           <Select value={filterBatimentId} onValueChange={(v) => setFilterBatimentId(v ?? "")}>
-            <SelectTrigger className="w-32" aria-label="Filtrer par bâtiment">
+            <SelectTrigger className="w-36" aria-label="Filtrer par bâtiment">
               <SelectValue placeholder="Bâtiment">
                 {(value: string | null) => {
                   if (!value) return "Bâtiment";
@@ -520,10 +521,22 @@ export default function SallesPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-primary">Salle {selected.nom}</CardTitle>
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
-                <Trash2 className="size-4" data-icon="inline-start" />
-                Supprimer
-              </Button>
+              <ConfirmDialog
+                title="Supprimer cette salle ?"
+                description={
+                  <>
+                    La salle {selected.nom} et ses calculateurs associés seront
+                    définitivement supprimés. Cette action est irréversible.
+                  </>
+                }
+                onConfirm={handleDelete}
+                trigger={
+                  <Button variant="destructive" size="sm">
+                    <Trash2 className="size-4" data-icon="inline-start" />
+                    Supprimer
+                  </Button>
+                }
+              />
             </CardHeader>
             <CardContent>
               <form

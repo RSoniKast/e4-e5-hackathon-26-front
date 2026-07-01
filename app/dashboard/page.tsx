@@ -28,6 +28,7 @@ import {
   ApiError,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Card,
   CardContent,
@@ -409,10 +410,22 @@ export default function SitesBatimentsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-primary">Détail du site</CardTitle>
-              <Button variant="destructive" size="sm" onClick={handleDeleteSite}>
-                <Trash2 className="size-4" data-icon="inline-start" />
-                Supprimer
-              </Button>
+              <ConfirmDialog
+                title="Supprimer ce site ?"
+                description={
+                  <>
+                    Le site {site.nom} sera définitivement supprimé. Cette
+                    action est irréversible.
+                  </>
+                }
+                onConfirm={handleDeleteSite}
+                trigger={
+                  <Button variant="destructive" size="sm">
+                    <Trash2 className="size-4" data-icon="inline-start" />
+                    Supprimer
+                  </Button>
+                }
+              />
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-6">
@@ -510,10 +523,15 @@ export default function SitesBatimentsPage() {
                               <TableCell className="font-medium">{b.nom}</TableCell>
                               <TableCell>{(sallesMap[b.id] ?? []).length}</TableCell>
                               <TableCell>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={async () => {
+                                <ConfirmDialog
+                                  title="Supprimer ce bâtiment ?"
+                                  description={
+                                    <>
+                                      Le bâtiment {b.nom} sera définitivement
+                                      supprimé. Cette action est irréversible.
+                                    </>
+                                  }
+                                  onConfirm={async () => {
                                     try {
                                       await deleteBatiment(b.id);
                                       toast.success(`Bâtiment ${b.nom} supprimé`);
@@ -526,9 +544,12 @@ export default function SitesBatimentsPage() {
                                       );
                                     }
                                   }}
-                                >
-                                  <Trash2 className="size-4 text-destructive" />
-                                </Button>
+                                  trigger={
+                                    <Button variant="ghost" size="sm">
+                                      <Trash2 className="size-4 text-destructive" />
+                                    </Button>
+                                  }
+                                />
                               </TableCell>
                             </TableRow>
                           ))
