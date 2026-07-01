@@ -5,21 +5,31 @@ import { Search, Plus, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
-import type { SalleRead, BatimentRead, CalculateurRead, SiteRead } from "@/lib/types";
+import type { SalleRead, BatimentRead, CalculateurRead, SiteRead, PersonnelRead } from "@/lib/types";
 import {
   getSalles,
   getBatiments,
   getSites,
   getCalculateurs,
+  getPersonnels,
+  getHoraires,
+  createHoraire,
   createSalle,
   updateSalle,
   deleteSalle,
   updateCalculateur,
   ApiError,
 } from "@/lib/api";
+import { Planning } from "@/components/planning/planning";
+import { horairesToEvents, type PlanningEvent, type HoraireDraft } from "@/lib/planning";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -69,6 +79,47 @@ export default function SallesPage() {
   const [filterSiteId, setFilterSiteId] = React.useState<string>("");
   const [filterBatimentId, setFilterBatimentId] = React.useState<string>("");
   const [createOpen, setCreateOpen] = React.useState(false);
+  // Calculateurs liés à la salle sélectionnée (multi-select contrôlé, ids en string).
+  const [selectedCalcIds, setSelectedCalcIds] = React.useState<string[]>([]);
+  const [planningEvents, setPlanningEvents] = React.useState<PlanningEvent[]>(
+    []
+  );
+  // Site choisi dans les formulaires : restreint les bâtiments proposés à ce site.
+  const [createSiteId, setCreateSiteId] = React.useState<string>("");
+  const [createBatId, setCreateBatId] = React.useState<string>("");
+  const [editSiteId, setEditSiteId] = React.useState<string>("");
+  const [editBatId, setEditBatId] = React.useState<string>("");
+  // Personnels chargés pour le planning (options du sélecteur "Personnel" dans
+  // le dialog d'ajout de créneau).
+  const [planningPersonnels, setPlanningPersonnels] = React.useState<
+    PersonnelRead[]
+  >([]);
+
+  // (Re)charge l'occupation hebdomadaire des personnels (aucun lien
+  // salle↔personnel exposé par l'API : la vue est commune à l'établissement).
+  const reloadPlanning = React.useCallback(async () => {
+    try {
+      const people = await getPersonnels();
+      const lists = await Promise.all(
+        people.map((pp) => getHoraires(pp.id).catch(() => []))
+      );
+      const evts = people.flatMap((pp, i) =>
+        horairesToEvents(lists[i], {
+          title: `${pp.prenom} ${pp.nom}`,
+          colorIndex: i,
+          keyPrefix: `sp${pp.id}`,
+        })
+      );
+      setPlanningPersonnels(people);
+      setPlanningEvents(evts);
+    } catch {
+      /* planning optionnel : on ignore les erreurs de chargement */
+    }
+  }, []);
+
+  React.useEffect(() => {
+    reloadPlanning();
+  }, [reloadPlanning]);
 
   const loadData = React.useCallback(async () => {
     try {
@@ -121,13 +172,39 @@ export default function SallesPage() {
   });
 
   const selected = salles.find((s) => s.id === selectedId) ?? salles[0];
-  const salleCalcs = calculateurs.filter((c) => c.salle_id === selected?.id);
   const allCalcs = calculateurs;
+
+  // Aligne la sélection du multi-select sur les calculateurs réellement liés
+  // à la salle courante (au changement de salle ou après un rechargement).
+  React.useEffect(() => {
+    setSelectedCalcIds(
+      calculateurs
+        .filter((c) => c.salle_id === selected?.id)
+        .map((c) => String(c.id))
+    );
+  }, [selected?.id, calculateurs]);
+
+  // Initialise les sélecteurs Site/Bâtiment du formulaire de détail sur la
+  // salle courante (le site est déduit du bâtiment de la salle).
+  React.useEffect(() => {
+    if (!selected) return;
+    const bat = batiments.find((b) => b.id === selected.batiment_id);
+    setEditSiteId(bat ? String(bat.site_id) : "");
+    setEditBatId(String(selected.batiment_id));
+  }, [selected?.id, batiments]);
 
   // Filter batiments by site for create dialog
   const filteredBatimentsForFilter = filterSiteId
     ? batiments.filter((b) => b.site_id === parseInt(filterSiteId))
     : batiments;
+
+  // Bâtiments d'un site donné (id en string), pour les sélecteurs de formulaire.
+  const batimentsForSite = (siteId: string) =>
+    siteId ? batiments.filter((b) => String(b.site_id) === siteId) : [];
+
+  // Tronque un libellé trop long pour un dropdown compact ("…" en fin).
+  const truncateLabel = (text: string, max = 20) =>
+    text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 
   // Handle save
   async function handleSave(e: React.FormEvent<HTMLFormElement>) {
@@ -139,13 +216,13 @@ export default function SallesPage() {
       await updateSalle(selected.id, {
         nom: formData.get("salle-nom") as string,
         capacite: formData.get("salle-cap") ? parseInt(formData.get("salle-cap") as string) : null,
-        batiment_id: formData.get("salle-bat") ? parseInt(formData.get("salle-bat") as string) : undefined,
+        batiment_id: editBatId ? parseInt(editBatId) : undefined,
         heure_fermeture: (formData.get("salle-heure") as string) || null,
       });
 
-      // Update calculateur links: assign salle_id to checked calculateurs, remove from unchecked
+      // Update calculateur links: assign salle_id to selected calculateurs, remove from the rest
       const checkedCalcIds = new Set(
-        Array.from(formData.getAll("calc")).map((v) => parseInt(v as string))
+        selectedCalcIds.map((v) => parseInt(v, 10))
       );
       for (const calc of allCalcs) {
         const shouldBeLinked = checkedCalcIds.has(calc.id);
@@ -170,10 +247,14 @@ export default function SallesPage() {
   async function handleCreateSalle(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    if (!createBatId) {
+      toast.error("Veuillez choisir un bâtiment");
+      return;
+    }
     try {
       await createSalle({
         nom: formData.get("nom") as string,
-        batiment_id: parseInt(formData.get("batiment_id") as string),
+        batiment_id: parseInt(createBatId),
         capacite: formData.get("capacite") ? parseInt(formData.get("capacite") as string) : undefined,
         heure_fermeture: (formData.get("heure_fermeture") as string) || undefined,
       });
@@ -195,6 +276,26 @@ export default function SallesPage() {
       await loadData();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.detail : "Erreur lors de la suppression");
+    }
+  }
+
+  // Ajout d'un créneau depuis le planning → POST /api/personnels/{pid}/horaires.
+  // Le personnel est choisi dans le dialog (draft.personnelId) ; on le retire
+  // du corps envoyé (ce n'est pas un champ HoraireCreate). L'horaire est rattaché
+  // au personnel et apparaît dans la vue établissement de toutes les salles.
+  async function handleAddHoraire({ personnelId, ...draft }: HoraireDraft) {
+    if (!personnelId) {
+      toast.error("Choisissez d'abord un personnel");
+      return;
+    }
+    try {
+      await createHoraire(personnelId, draft);
+      toast.success("Créneau ajouté");
+      await reloadPlanning();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.detail : "Erreur lors de l'ajout du créneau"
+      );
     }
   }
 
@@ -223,47 +324,56 @@ export default function SallesPage() {
             />
           </InputGroup>
           <Select value={filterSiteId} onValueChange={(v) => { setFilterSiteId(v ?? ""); setFilterBatimentId(""); }}>
-            <SelectTrigger className="w-28" aria-label="Filtrer par site">
+            <SelectTrigger className="w-36" aria-label="Filtrer par site">
               <SelectValue placeholder="Site">
                 {(value: string | null) => {
                   if (!value) return "Site";
                   const s = sites.find((x) => String(x.id) === value);
-                  return s ? s.nom : value;
+                  return s ? truncateLabel(s.nom) : value;
                 }}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
                 {sites.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.nom}
+                  <SelectItem key={s.id} value={String(s.id)} title={s.nom}>
+                    {truncateLabel(s.nom)}
                   </SelectItem>
                 ))}
               </SelectGroup>
             </SelectContent>
           </Select>
           <Select value={filterBatimentId} onValueChange={(v) => setFilterBatimentId(v ?? "")}>
-            <SelectTrigger className="w-32" aria-label="Filtrer par bâtiment">
+            <SelectTrigger className="w-36" aria-label="Filtrer par bâtiment">
               <SelectValue placeholder="Bâtiment">
                 {(value: string | null) => {
                   if (!value) return "Bâtiment";
                   const b = filteredBatimentsForFilter.find((x) => String(x.id) === value);
-                  return b ? b.nom : value;
+                  return b ? truncateLabel(b.nom) : value;
                 }}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
                 {filteredBatimentsForFilter.map((b) => (
-                  <SelectItem key={b.id} value={String(b.id)}>
-                    {b.nom}
+                  <SelectItem key={b.id} value={String(b.id)} title={b.nom}>
+                    {truncateLabel(b.nom)}
                   </SelectItem>
                 ))}
               </SelectGroup>
             </SelectContent>
           </Select>
 
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog
+            open={createOpen}
+            onOpenChange={(o) => {
+              setCreateOpen(o);
+              if (o) {
+                setCreateSiteId("");
+                setCreateBatId("");
+              }
+            }}
+          >
             <DialogTrigger render={<Button />}>
               <Plus data-icon="inline-start" />
               Salle
@@ -282,22 +392,59 @@ export default function SallesPage() {
                     <Input id="create-salle-nom" name="nom" required />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="create-salle-bat">Bâtiment</FieldLabel>
-                    <Select name="batiment_id" required>
-                      <SelectTrigger id="create-salle-bat" className="w-full">
-                        <SelectValue placeholder="Choisir un bâtiment">
+                    <FieldLabel htmlFor="create-salle-site">Site</FieldLabel>
+                    <Select
+                      value={createSiteId}
+                      onValueChange={(v) => {
+                        setCreateSiteId(v ?? "");
+                        setCreateBatId("");
+                      }}
+                    >
+                      <SelectTrigger id="create-salle-site" className="w-full">
+                        <SelectValue placeholder="Choisir un site">
                           {(value: string | null) => {
-                            if (!value) return "Choisir un bâtiment";
-                            const b = batiments.find((x) => String(x.id) === value);
-                            return b ? `${b.nom} — ${getSiteName(b.id)}` : value;
+                            if (!value) return "Choisir un site";
+                            const s = sites.find((x) => String(x.id) === value);
+                            return s ? s.nom : value;
                           }}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          {batiments.map((b) => (
+                          {sites.map((s) => (
+                            <SelectItem key={s.id} value={String(s.id)}>
+                              {s.nom}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="create-salle-bat">Bâtiment</FieldLabel>
+                    <Select
+                      name="batiment_id"
+                      value={createBatId}
+                      onValueChange={(v) => setCreateBatId(v ?? "")}
+                      disabled={!createSiteId}
+                    >
+                      <SelectTrigger id="create-salle-bat" className="w-full">
+                        <SelectValue placeholder="Choisir un bâtiment">
+                          {(value: string | null) => {
+                            if (!value)
+                              return createSiteId
+                                ? "Choisir un bâtiment"
+                                : "Choisir un site d'abord";
+                            const b = batiments.find((x) => String(x.id) === value);
+                            return b ? b.nom : value;
+                          }}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {batimentsForSite(createSiteId).map((b) => (
                             <SelectItem key={b.id} value={String(b.id)}>
-                              {b.nom} — {getSiteName(b.id)}
+                              {b.nom}
                             </SelectItem>
                           ))}
                         </SelectGroup>
@@ -374,10 +521,22 @@ export default function SallesPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-primary">Salle {selected.nom}</CardTitle>
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
-                <Trash2 className="size-4" data-icon="inline-start" />
-                Supprimer
-              </Button>
+              <ConfirmDialog
+                title="Supprimer cette salle ?"
+                description={
+                  <>
+                    La salle {selected.nom} et ses calculateurs associés seront
+                    définitivement supprimés. Cette action est irréversible.
+                  </>
+                }
+                onConfirm={handleDelete}
+                trigger={
+                  <Button variant="destructive" size="sm">
+                    <Trash2 className="size-4" data-icon="inline-start" />
+                    Supprimer
+                  </Button>
+                }
+              />
             </CardHeader>
             <CardContent>
               <form
@@ -410,21 +569,64 @@ export default function SallesPage() {
                       defaultValue={selected.heure_fermeture ?? ""}
                     />
                   </Field>
-                  <Field>
-                    <FieldLabel htmlFor="salle-bat">Bâtiment</FieldLabel>
-                    <select
-                      id="salle-bat"
-                      name="salle-bat"
-                      defaultValue={String(selected.batiment_id)}
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    >
-                      {batiments.map((b) => (
-                        <option key={b.id} value={String(b.id)}>
-                          {b.nom}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field>
+                      <FieldLabel htmlFor="salle-site">Site</FieldLabel>
+                      <Select
+                        value={editSiteId}
+                        onValueChange={(v) => {
+                          setEditSiteId(v ?? "");
+                          setEditBatId("");
+                        }}
+                      >
+                        <SelectTrigger id="salle-site" className="w-full">
+                          <SelectValue placeholder="Choisir un site">
+                            {(value: string | null) => {
+                              if (!value) return "Choisir un site";
+                              const s = sites.find((x) => String(x.id) === value);
+                              return s ? s.nom : value;
+                            }}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {sites.map((s) => (
+                              <SelectItem key={s.id} value={String(s.id)}>
+                                {s.nom}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="salle-bat">Bâtiment</FieldLabel>
+                      <Select
+                        value={editBatId}
+                        onValueChange={(v) => setEditBatId(v ?? "")}
+                        disabled={!editSiteId}
+                      >
+                        <SelectTrigger id="salle-bat" className="w-full">
+                          <SelectValue placeholder="Choisir un bâtiment">
+                            {(value: string | null) => {
+                              if (!value) return "Choisir un bâtiment";
+                              const b = batiments.find((x) => String(x.id) === value);
+                              return b ? b.nom : value;
+                            }}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {batimentsForSite(editSiteId).map((b) => (
+                              <SelectItem key={b.id} value={String(b.id)}>
+                                {b.nom}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  </div>
                 </FieldGroup>
 
                 <Separator />
@@ -433,33 +635,40 @@ export default function SallesPage() {
                   <h3 className="font-heading text-sm font-medium text-primary">
                     Calculateurs liés
                   </h3>
-                  <FieldGroup>
-                    {allCalcs.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        Aucun calculateur enregistré
-                      </p>
-                    ) : (
-                      allCalcs.map((c) => {
-                        const checked = c.salle_id === selected.id;
-                        return (
-                          <Field key={c.id} orientation="horizontal">
-                            <Checkbox
-                              id={`calc-${c.id}`}
-                              name="calc"
-                              value={String(c.id)}
-                              defaultChecked={checked}
-                            />
-                            <FieldLabel
-                              htmlFor={`calc-${c.id}`}
-                              className="font-normal"
-                            >
-                              {c.nom} · {c.ip_adresse ?? "pas d'IP"}
-                            </FieldLabel>
-                          </Field>
-                        );
-                      })
-                    )}
-                  </FieldGroup>
+                  {allCalcs.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Aucun calculateur enregistré
+                    </p>
+                  ) : (
+                    <Field>
+                      <Select
+                        multiple
+                        value={selectedCalcIds}
+                        onValueChange={(v) => setSelectedCalcIds(v as string[])}
+                      >
+                        <SelectTrigger className="w-full" aria-label="Calculateurs liés">
+                          <SelectValue>
+                            {(value: string[]) =>
+                              !value || value.length === 0
+                                ? "Aucun calculateur lié"
+                                : `${value.length} calculateur${
+                                    value.length > 1 ? "s" : ""
+                                  } lié${value.length > 1 ? "s" : ""}`
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent className="max-h-72">
+                          <SelectGroup>
+                            {allCalcs.map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>
+                                {c.nom} · {c.ip_adresse ?? "pas d'IP"}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
                 </div>
 
                 <Button type="submit" className="mt-auto w-full" disabled={saving}>
@@ -474,6 +683,29 @@ export default function SallesPage() {
             <p className="text-muted-foreground">Sélectionnez une salle</p>
           </Card>
         )}
+      </div>
+
+      {/* ─── Planning des salles ─────────────────────────────────── */}
+      <div className="px-4 pb-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Planning{selected ? ` — ${selected.nom}` : ""}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Planning
+              events={planningEvents}
+              onCreateHoraire={handleAddHoraire}
+              emptyLabel="Aucun horaire de personnel enregistré."
+              closingTime={selected?.heure_fermeture ?? null}
+              personnelOptions={planningPersonnels.map((pp) => ({
+                id: pp.id,
+                label: `${pp.prenom} ${pp.nom}`,
+              }))}
+            />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

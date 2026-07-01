@@ -183,7 +183,7 @@ export default function VisualisationPage() {
             value={filterSiteId}
             onValueChange={(v) => setFilterSiteId(v ?? "")}
           >
-            <SelectTrigger className="w-28" aria-label="Filtrer par site">
+            <SelectTrigger className="w-36" aria-label="Filtrer par site">
               <SelectValue placeholder="Site">
                 {(value: string | null) => {
                   if (!value) return "Site";

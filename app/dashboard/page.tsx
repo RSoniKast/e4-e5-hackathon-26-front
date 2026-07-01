@@ -28,6 +28,7 @@ import {
   ApiError,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Card,
   CardContent,
@@ -409,10 +410,22 @@ export default function SitesBatimentsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-primary">Détail du site</CardTitle>
-              <Button variant="destructive" size="sm" onClick={handleDeleteSite}>
-                <Trash2 className="size-4" data-icon="inline-start" />
-                Supprimer
-              </Button>
+              <ConfirmDialog
+                title="Supprimer ce site ?"
+                description={
+                  <>
+                    Le site {site.nom} sera définitivement supprimé. Cette
+                    action est irréversible.
+                  </>
+                }
+                onConfirm={handleDeleteSite}
+                trigger={
+                  <Button variant="destructive" size="sm">
+                    <Trash2 className="size-4" data-icon="inline-start" />
+                    Supprimer
+                  </Button>
+                }
+              />
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-6">
@@ -479,9 +492,12 @@ export default function SitesBatimentsPage() {
                 <Separator />
 
                 <div className="flex flex-col gap-3">
-                  <h3 className="font-heading text-sm font-medium text-primary">
-                    Bâtiments ({siteBatiments.length})
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-heading text-sm font-medium text-primary">
+                      Bâtiments ({siteBatiments.length})
+                    </h3>
+                    <AddBatimentForm siteId={site.id} onCreated={loadData} />
+                  </div>
                   <div className="overflow-hidden rounded-lg border">
                     <Table>
                       <TableHeader>
@@ -507,10 +523,15 @@ export default function SitesBatimentsPage() {
                               <TableCell className="font-medium">{b.nom}</TableCell>
                               <TableCell>{(sallesMap[b.id] ?? []).length}</TableCell>
                               <TableCell>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={async () => {
+                                <ConfirmDialog
+                                  title="Supprimer ce bâtiment ?"
+                                  description={
+                                    <>
+                                      Le bâtiment {b.nom} sera définitivement
+                                      supprimé. Cette action est irréversible.
+                                    </>
+                                  }
+                                  onConfirm={async () => {
                                     try {
                                       await deleteBatiment(b.id);
                                       toast.success(`Bâtiment ${b.nom} supprimé`);
@@ -523,9 +544,12 @@ export default function SitesBatimentsPage() {
                                       );
                                     }
                                   }}
-                                >
-                                  <Trash2 className="size-4 text-destructive" />
-                                </Button>
+                                  trigger={
+                                    <Button variant="ghost" size="sm">
+                                      <Trash2 className="size-4 text-destructive" />
+                                    </Button>
+                                  }
+                                />
                               </TableCell>
                             </TableRow>
                           ))
@@ -533,7 +557,6 @@ export default function SitesBatimentsPage() {
                       </TableBody>
                     </Table>
                   </div>
-                  <AddBatimentForm siteId={site.id} onCreated={loadData} />
                 </div>
               </div>
             </CardContent>
@@ -555,6 +578,7 @@ function AddBatimentForm({
   siteId: number;
   onCreated: () => Promise<void>;
 }) {
+  const [open, setOpen] = React.useState(false);
   const [nom, setNom] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
@@ -566,6 +590,7 @@ function AddBatimentForm({
       await createBatiment({ site_id: siteId, nom: nom.trim() });
       toast.success(`Bâtiment ${nom} créé`);
       setNom("");
+      setOpen(false);
       await onCreated();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.detail : "Erreur lors de la création");
@@ -575,20 +600,46 @@ function AddBatimentForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2">
-      <Field className="flex-1">
-        <FieldLabel htmlFor="new-bat-nom">Nouveau bâtiment</FieldLabel>
-        <Input
-          id="new-bat-nom"
-          value={nom}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNom(e.target.value)}
-          placeholder="Nom du bâtiment"
-        />
-      </Field>
-      <Button type="submit" size="sm" disabled={creating || !nom.trim()}>
-        <Plus className="size-4" data-icon="inline-start" />
-        Ajouter
-      </Button>
-    </form>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" />}>
+        <Plus data-icon="inline-start" />
+        Ajouter un bâtiment
+      </DialogTrigger>
+      <DialogContent>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>Nouveau bâtiment</DialogTitle>
+            <DialogDescription>
+              Renseignez le nom du nouveau bâtiment.
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup className="py-4">
+            <Field>
+              <FieldLabel htmlFor="new-bat-nom">Nom</FieldLabel>
+              <Input
+                id="new-bat-nom"
+                value={nom}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setNom(e.target.value)
+                }
+                placeholder="Nom du bâtiment"
+                autoFocus
+              />
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" type="button" />}>
+              Annuler
+            </DialogClose>
+            <Button type="submit" disabled={creating || !nom.trim()}>
+              {creating && (
+                <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
+              )}
+              Créer
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
